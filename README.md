@@ -17,3 +17,17 @@ npm run dev
 npm run build
 npm run preview
 ```
+
+## Docker (production)
+
+Build the image:
+
+```bash
+docker build -t card-image:prod .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8080:80 card-image:prod
+```
