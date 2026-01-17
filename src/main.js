@@ -41,7 +41,7 @@ const layout = {
   rows: 5,
   a4WidthMm: 210,
   a4HeightMm: 297,
-  marginMm: 8,
+  marginMm: 10,
   oversizeMm: 1,
   looseRows: 4,
   looseMarginMm: 10,
