@@ -110,12 +110,31 @@
                 </div>
 
                 <div class="control-block">
+                    <label for="toggleTrimLine">Trim line in PDF</label>
+                    <button
+                        id="toggleTrimLine"
+                        class="ghost"
+                        type="button"
+                        aria-pressed="false"
+                    >
+                        Trim line in PDF: Off
+                    </button>
+                    <p class="hint">
+                        Applies to cards added after you toggle it.
+                    </p>
+                </div>
+
+                <div class="control-block">
                     <h2>Layout</h2>
                     <ul class="layout-meta">
                         <li>Format: A4 (210 × 297 mm)</li>
                         <li>Card size: ID-1 (85.6 × 53.98 mm)</li>
                         <li>Oversize: <span id="oversizeMeta">1 mm</span></li>
                         <li>Printed label: <span id="labelMeta"></span></li>
+                        <li>
+                            Trim line in PDF:
+                            <span id="trimLineMeta">Off</span>
+                        </li>
                         <li>Grid: 2 columns × 4 rows</li>
                     </ul>
                 </div>

@@ -15,8 +15,10 @@ const resetViewBtn = document.getElementById("resetView");
 const pagePreview = document.getElementById("pagePreview");
 const statusEl = document.getElementById("status");
 const oversizeInput = document.getElementById("oversizeInput");
+const toggleTrimLineBtn = document.getElementById("toggleTrimLine");
 const oversizeMeta = document.getElementById("oversizeMeta");
 const labelMeta = document.getElementById("labelMeta");
+const trimLineMeta = document.getElementById("trimLineMeta");
 
 const PX_PER_MM = 10;
 
@@ -45,6 +47,8 @@ const render = {
 };
 
 let showBleedOverlay = true;
+let showTrimGuide = true;
+let includeTrimInExport = false;
 
 const state = {
   img: null,
@@ -96,6 +100,20 @@ function updateLayoutMeta() {
     labelMeta.textContent = `${formatMm(labelSize.width)} × ${formatMm(
       labelSize.height,
     )} mm`;
+  }
+}
+
+function updateTrimLineToggle() {
+  const label = includeTrimInExport ? "On" : "Off";
+  if (toggleTrimLineBtn) {
+    toggleTrimLineBtn.textContent = `Trim line in PDF: ${label}`;
+    toggleTrimLineBtn.setAttribute(
+      "aria-pressed",
+      includeTrimInExport.toString(),
+    );
+  }
+  if (trimLineMeta) {
+    trimLineMeta.textContent = label;
   }
 }
 
@@ -154,6 +172,9 @@ function drawBleedOverlay() {
 }
 
 function drawTrimGuide() {
+  if (!showTrimGuide) {
+    return;
+  }
   const trim = getTrimRect();
   ctx.save();
   ctx.strokeStyle = "rgba(42, 106, 115, 0.6)";
@@ -451,10 +472,13 @@ function addToPage() {
     return;
   }
   const previousBleedOverlay = showBleedOverlay;
+  const previousTrimGuide = showTrimGuide;
   showBleedOverlay = false;
+  showTrimGuide = includeTrimInExport;
   drawCard();
   const dataUrl = canvas.toDataURL("image/png");
   showBleedOverlay = previousBleedOverlay;
+  showTrimGuide = previousTrimGuide;
   drawCard();
   cards.push({
     id: Date.now().toString(16),
@@ -584,6 +608,7 @@ if (oversizeInput) {
   }
 }
 updateRenderMetrics();
+updateTrimLineToggle();
 
 imageInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
@@ -600,6 +625,16 @@ scaleRange.addEventListener("input", (event) => {
 if (oversizeInput) {
   oversizeInput.addEventListener("input", (event) => {
     applyOversize(event.target.value, { announce: true });
+  });
+}
+
+if (toggleTrimLineBtn) {
+  toggleTrimLineBtn.addEventListener("click", () => {
+    includeTrimInExport = !includeTrimInExport;
+    updateTrimLineToggle();
+    setStatus(
+      `Trim line in PDF ${includeTrimInExport ? "enabled" : "disabled"}.`,
+    );
   });
 }
 
