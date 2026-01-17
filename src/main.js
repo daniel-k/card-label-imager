@@ -14,6 +14,9 @@ const clearPageBtn = document.getElementById("clearPage");
 const resetViewBtn = document.getElementById("resetView");
 const pagePreview = document.getElementById("pagePreview");
 const statusEl = document.getElementById("status");
+const pdfProgress = document.getElementById("pdfProgress");
+const pdfProgressBar = document.getElementById("pdfProgressBar");
+const pdfProgressMeta = document.getElementById("pdfProgressMeta");
 const oversizeInput = document.getElementById("oversizeInput");
 const toggleTrimLineBtn = document.getElementById("toggleTrimLine");
 const oversizeMeta = document.getElementById("oversizeMeta");
@@ -68,9 +71,39 @@ const state = {
 };
 
 const cards = [];
+const downloadPdfLabel = downloadPdfBtn?.textContent ?? "Download PDF";
+let isDownloading = false;
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function setPdfBusy(isBusy) {
+  if (!downloadPdfBtn) {
+    return;
+  }
+  downloadPdfBtn.disabled = isBusy;
+  downloadPdfBtn.textContent = isBusy ? "Building PDF..." : downloadPdfLabel;
+}
+
+function setPdfProgress(visible, current = 0, total = 0) {
+  if (!pdfProgress || !pdfProgressBar || !pdfProgressMeta) {
+    return;
+  }
+  pdfProgress.classList.toggle("active", visible);
+  pdfProgress.setAttribute("aria-hidden", (!visible).toString());
+  if (!visible) {
+    pdfProgressBar.style.width = "0%";
+    pdfProgressMeta.textContent = "Preparing PDF...";
+    return;
+  }
+  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+  pdfProgressBar.style.width = `${percent}%`;
+  const label =
+    total > 0
+      ? `Generating PDF... ${current} of ${total}`
+      : "Generating PDF...";
+  pdfProgressMeta.textContent = label;
 }
 
 function roundedRectPath(context, x, y, width, height, radius) {
@@ -652,70 +685,94 @@ async function downloadPdf() {
     setStatus("Add at least one card before downloading the PDF.");
     return;
   }
-
-  const pdfDoc = await PDFDocument.create();
-  const pageWidth = mmToPt(layout.a4WidthMm);
-  const pageHeight = mmToPt(layout.a4HeightMm);
-  const labelSize = getLabelSizeMm();
-  const labelWidth = mmToPt(labelSize.width);
-  const labelHeight = mmToPt(labelSize.height);
-  const marginX = mmToPt(layout.marginMm);
-
-  const gapX =
-    layout.columns > 1
-      ? (pageWidth - marginX * 2 - labelWidth * layout.columns) /
-        (layout.columns - 1)
-      : 0;
-
-  const perPage = layout.columns * layout.rows;
-  let page = null;
-  let pageRows = layout.rows;
-  let marginY = mmToPt(layout.marginMm);
-  let gapY = 0;
-
-  for (let i = 0; i < cards.length; i += 1) {
-    if (i % perPage === 0) {
-      page = pdfDoc.addPage([pageWidth, pageHeight]);
-      const remaining = cards.length - i;
-      const pageCount = Math.min(perPage, remaining);
-      const verticalLayout = getPageVerticalLayout(pageCount);
-      pageRows = verticalLayout.rows;
-      marginY = mmToPt(verticalLayout.marginMm);
-      gapY =
-        pageRows > 1
-          ? (pageHeight - marginY * 2 - labelHeight * pageRows) / (pageRows - 1)
-          : 0;
-    }
-
-    const position = i % perPage;
-    const column = position % layout.columns;
-    const row = Math.floor(position / layout.columns);
-
-    const x = marginX + column * (labelWidth + gapX);
-    const y = pageHeight - marginY - labelHeight - row * (labelHeight + gapY);
-
-    const pngBytes = await fetch(cards[i].dataUrl).then((res) =>
-      res.arrayBuffer(),
-    );
-    const png = await pdfDoc.embedPng(pngBytes);
-    page.drawImage(png, {
-      x,
-      y,
-      width: labelWidth,
-      height: labelHeight,
-    });
+  if (isDownloading) {
+    setStatus("PDF generation is already in progress.");
+    return;
   }
 
-  const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "card-labels.pdf";
-  link.click();
-  URL.revokeObjectURL(url);
+  const totalCards = cards.length;
+  isDownloading = true;
+  setPdfBusy(true);
+  setPdfProgress(true, 0, totalCards);
+  setStatus(`Generating PDF... 0 of ${totalCards}`);
 
-  setStatus("PDF downloaded. Print at 100% scale for accurate labels.");
+  try {
+    const pdfDoc = await PDFDocument.create();
+    const pageWidth = mmToPt(layout.a4WidthMm);
+    const pageHeight = mmToPt(layout.a4HeightMm);
+    const labelSize = getLabelSizeMm();
+    const labelWidth = mmToPt(labelSize.width);
+    const labelHeight = mmToPt(labelSize.height);
+    const marginX = mmToPt(layout.marginMm);
+
+    const gapX =
+      layout.columns > 1
+        ? (pageWidth - marginX * 2 - labelWidth * layout.columns) /
+          (layout.columns - 1)
+        : 0;
+
+    const perPage = layout.columns * layout.rows;
+    let page = null;
+    let pageRows = layout.rows;
+    let marginY = mmToPt(layout.marginMm);
+    let gapY = 0;
+
+    for (let i = 0; i < cards.length; i += 1) {
+      if (i % perPage === 0) {
+        page = pdfDoc.addPage([pageWidth, pageHeight]);
+        const remaining = cards.length - i;
+        const pageCount = Math.min(perPage, remaining);
+        const verticalLayout = getPageVerticalLayout(pageCount);
+        pageRows = verticalLayout.rows;
+        marginY = mmToPt(verticalLayout.marginMm);
+        gapY =
+          pageRows > 1
+            ? (pageHeight - marginY * 2 - labelHeight * pageRows) /
+              (pageRows - 1)
+            : 0;
+      }
+
+      const position = i % perPage;
+      const column = position % layout.columns;
+      const row = Math.floor(position / layout.columns);
+
+      const x = marginX + column * (labelWidth + gapX);
+      const y = pageHeight - marginY - labelHeight - row * (labelHeight + gapY);
+
+      const pngBytes = await fetch(cards[i].dataUrl).then((res) =>
+        res.arrayBuffer(),
+      );
+      const png = await pdfDoc.embedPng(pngBytes);
+      page.drawImage(png, {
+        x,
+        y,
+        width: labelWidth,
+        height: labelHeight,
+      });
+
+      const progress = i + 1;
+      setPdfProgress(true, progress, totalCards);
+      setStatus(`Generating PDF... ${progress} of ${totalCards}`);
+    }
+
+    setStatus("Finalizing PDF...");
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "card-labels.pdf";
+    link.click();
+    URL.revokeObjectURL(url);
+
+    setStatus("PDF downloaded. Print at 100% scale for accurate labels.");
+  } catch (error) {
+    setStatus("Could not generate the PDF. Please try again.");
+  } finally {
+    isDownloading = false;
+    setPdfBusy(false);
+    setPdfProgress(false);
+  }
 }
 
 if (oversizeInput) {
