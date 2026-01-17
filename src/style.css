@@ -270,6 +270,15 @@ button.ghost:hover {
     background: #fff;
 }
 
+.control-block input[type="number"] {
+    width: 100%;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(31, 43, 42, 0.2);
+    background: #fff;
+    font-family: inherit;
+}
+
 .url-row {
     display: flex;
     gap: 10px;

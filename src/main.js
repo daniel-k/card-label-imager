@@ -14,12 +14,37 @@ const clearPageBtn = document.getElementById("clearPage");
 const resetViewBtn = document.getElementById("resetView");
 const pagePreview = document.getElementById("pagePreview");
 const statusEl = document.getElementById("status");
+const oversizeInput = document.getElementById("oversizeInput");
+const oversizeMeta = document.getElementById("oversizeMeta");
+const labelMeta = document.getElementById("labelMeta");
 
-const card = {
-  width: canvas.width,
-  height: canvas.height,
-  radius: 36,
+const PX_PER_MM = 10;
+
+const baseCard = {
+  widthMm: 85.6,
+  heightMm: 53.98,
+  radiusMm: 3.6,
 };
+
+const layout = {
+  columns: 2,
+  rows: 4,
+  a4WidthMm: 210,
+  a4HeightMm: 297,
+  marginMm: 10,
+  oversizeMm: 1,
+};
+
+const render = {
+  labelWidthPx: 0,
+  labelHeightPx: 0,
+  cardWidthPx: 0,
+  cardHeightPx: 0,
+  cardRadiusPx: 0,
+  oversizePx: 0,
+};
+
+let showBleedOverlay = true;
 
 const state = {
   img: null,
@@ -36,16 +61,6 @@ const state = {
 
 const cards = [];
 
-const layout = {
-  columns: 2,
-  rows: 4,
-  a4WidthMm: 210,
-  a4HeightMm: 297,
-  cardWidthMm: 85.6,
-  cardHeightMm: 53.98,
-  marginMm: 10,
-};
-
 function setStatus(message) {
   statusEl.textContent = message;
 }
@@ -61,39 +76,123 @@ function roundedRectPath(context, x, y, width, height, radius) {
   context.closePath();
 }
 
+function formatMm(value) {
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function getLabelSizeMm() {
+  return {
+    width: baseCard.widthMm + layout.oversizeMm * 2,
+    height: baseCard.heightMm + layout.oversizeMm * 2,
+  };
+}
+
+function updateLayoutMeta() {
+  const labelSize = getLabelSizeMm();
+  if (oversizeMeta) {
+    oversizeMeta.textContent = `${formatMm(layout.oversizeMm)} mm per edge`;
+  }
+  if (labelMeta) {
+    labelMeta.textContent = `${formatMm(labelSize.width)} × ${formatMm(
+      labelSize.height,
+    )} mm`;
+  }
+}
+
+function updateRenderMetrics() {
+  const labelSize = getLabelSizeMm();
+  render.cardWidthPx = Math.round(baseCard.widthMm * PX_PER_MM);
+  render.cardHeightPx = Math.round(baseCard.heightMm * PX_PER_MM);
+  render.cardRadiusPx = Math.round(baseCard.radiusMm * PX_PER_MM);
+  render.oversizePx = layout.oversizeMm * PX_PER_MM;
+  render.labelWidthPx = Math.round(labelSize.width * PX_PER_MM);
+  render.labelHeightPx = Math.round(labelSize.height * PX_PER_MM);
+  canvas.width = render.labelWidthPx;
+  canvas.height = render.labelHeightPx;
+  updateLayoutMeta();
+}
+
+function getTrimRect() {
+  return {
+    x: render.oversizePx,
+    y: render.oversizePx,
+    width: render.cardWidthPx,
+    height: render.cardHeightPx,
+    radius: render.cardRadiusPx,
+  };
+}
+
+function clipToLabel() {
+  if (render.oversizePx === 0) {
+    roundedRectPath(
+      ctx,
+      0,
+      0,
+      render.labelWidthPx,
+      render.labelHeightPx,
+      render.cardRadiusPx,
+    );
+  } else {
+    ctx.beginPath();
+    ctx.rect(0, 0, render.labelWidthPx, render.labelHeightPx);
+  }
+  ctx.clip();
+}
+
+function drawBleedOverlay() {
+  if (!showBleedOverlay || render.oversizePx <= 0) {
+    return;
+  }
+  const trim = getTrimRect();
+  ctx.save();
+  ctx.fillStyle = "rgba(31, 43, 42, 0.06)";
+  ctx.beginPath();
+  ctx.rect(0, 0, render.labelWidthPx, render.labelHeightPx);
+  roundedRectPath(ctx, trim.x, trim.y, trim.width, trim.height, trim.radius);
+  ctx.fill("evenodd");
+  ctx.restore();
+}
+
+function drawTrimGuide() {
+  const trim = getTrimRect();
+  ctx.save();
+  ctx.strokeStyle = "rgba(42, 106, 115, 0.6)";
+  ctx.lineWidth = 3;
+  roundedRectPath(ctx, trim.x, trim.y, trim.width, trim.height, trim.radius);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPlaceholder() {
   ctx.save();
-  roundedRectPath(ctx, 0, 0, card.width, card.height, card.radius);
-  ctx.clip();
+  clipToLabel();
   ctx.fillStyle = "#f1e7d8";
-  ctx.fillRect(0, 0, card.width, card.height);
+  ctx.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
   ctx.strokeStyle = "rgba(31, 43, 42, 0.08)";
   ctx.lineWidth = 2;
-  for (let i = -card.height; i < card.width; i += 40) {
+  for (let i = -render.labelHeightPx; i < render.labelWidthPx; i += 40) {
     ctx.beginPath();
     ctx.moveTo(i, 0);
-    ctx.lineTo(i + card.height, card.height);
+    ctx.lineTo(i + render.labelHeightPx, render.labelHeightPx);
     ctx.stroke();
   }
   ctx.restore();
 
-  ctx.strokeStyle = "rgba(42, 106, 115, 0.5)";
-  ctx.lineWidth = 4;
-  roundedRectPath(ctx, 2, 2, card.width - 4, card.height - 4, card.radius);
-  ctx.stroke();
+  drawBleedOverlay();
+  drawTrimGuide();
 
   ctx.fillStyle = "#516261";
   ctx.font = '24px "Space Grotesk"';
   ctx.textAlign = "center";
   ctx.fillText(
     "Upload, paste, or load an image URL to start",
-    card.width / 2,
-    card.height / 2 + 8,
+    render.labelWidthPx / 2,
+    render.labelHeightPx / 2 + 8,
   );
 }
 
 function drawCard() {
-  ctx.clearRect(0, 0, card.width, card.height);
+  ctx.clearRect(0, 0, render.labelWidthPx, render.labelHeightPx);
 
   if (!state.img) {
     drawPlaceholder();
@@ -101,24 +200,21 @@ function drawCard() {
   }
 
   ctx.save();
-  roundedRectPath(ctx, 0, 0, card.width, card.height, card.radius);
-  ctx.clip();
+  clipToLabel();
   ctx.fillStyle = "#f7f1e6";
-  ctx.fillRect(0, 0, card.width, card.height);
+  ctx.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
 
   const scale = state.baseScale * state.zoom;
   const imageWidth = state.img.width * scale;
   const imageHeight = state.img.height * scale;
-  const x = card.width / 2 - imageWidth / 2 + state.offsetX;
-  const y = card.height / 2 - imageHeight / 2 + state.offsetY;
+  const x = render.labelWidthPx / 2 - imageWidth / 2 + state.offsetX;
+  const y = render.labelHeightPx / 2 - imageHeight / 2 + state.offsetY;
 
   ctx.drawImage(state.img, x, y, imageWidth, imageHeight);
   ctx.restore();
 
-  ctx.strokeStyle = "rgba(42, 106, 115, 0.6)";
-  ctx.lineWidth = 4;
-  roundedRectPath(ctx, 2, 2, card.width - 4, card.height - 4, card.radius);
-  ctx.stroke();
+  drawBleedOverlay();
+  drawTrimGuide();
 }
 
 function clampOffset(value, min, max) {
@@ -137,8 +233,8 @@ function getOffsetBounds() {
   const scale = state.baseScale * state.zoom;
   const imageWidth = state.img.width * scale;
   const imageHeight = state.img.height * scale;
-  const maxOffsetX = Math.max(0, (imageWidth - card.width) / 2);
-  const maxOffsetY = Math.max(0, (imageHeight - card.height) / 2);
+  const maxOffsetX = Math.max(0, (imageWidth - render.labelWidthPx) / 2);
+  const maxOffsetY = Math.max(0, (imageHeight - render.labelHeightPx) / 2);
 
   return {
     minX: -maxOffsetX,
@@ -159,8 +255,8 @@ function resetView() {
     return;
   }
   const fitScale = Math.max(
-    card.width / state.img.width,
-    card.height / state.img.height,
+    render.labelWidthPx / state.img.width,
+    render.labelHeightPx / state.img.height,
   );
   state.baseScale = fitScale;
   state.zoom = 1;
@@ -170,6 +266,44 @@ function resetView() {
   scaleRange.value = "1";
   scaleReadout.textContent = "100%";
   drawCard();
+}
+
+function applyOversize(value, options = {}) {
+  const { announce = false } = options;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return;
+  }
+  layout.oversizeMm = Math.max(0, numericValue);
+  if (oversizeInput) {
+    oversizeInput.value = layout.oversizeMm.toString();
+  }
+  const hadCards = cards.length > 0;
+  if (hadCards) {
+    cards.length = 0;
+    renderPagePreview();
+  }
+  updateRenderMetrics();
+  if (state.img) {
+    resetView();
+  } else {
+    drawCard();
+  }
+  if (announce) {
+    if (hadCards && state.img) {
+      setStatus("Oversize updated. Sheet cleared and image framing reset.");
+      return;
+    }
+    if (hadCards) {
+      setStatus("Oversize updated. Sheet cleared.");
+      return;
+    }
+    if (state.img) {
+      setStatus("Oversize updated. Image framing reset to cover the bleed.");
+      return;
+    }
+    setStatus("Oversize updated.");
+  }
 }
 
 function updateZoom(value) {
@@ -316,7 +450,12 @@ function addToPage() {
     );
     return;
   }
+  const previousBleedOverlay = showBleedOverlay;
+  showBleedOverlay = false;
+  drawCard();
   const dataUrl = canvas.toDataURL("image/png");
+  showBleedOverlay = previousBleedOverlay;
+  drawCard();
   cards.push({
     id: Date.now().toString(16),
     dataUrl,
@@ -383,18 +522,20 @@ async function downloadPdf() {
   const pdfDoc = await PDFDocument.create();
   const pageWidth = mmToPt(layout.a4WidthMm);
   const pageHeight = mmToPt(layout.a4HeightMm);
-  const cardWidth = mmToPt(layout.cardWidthMm);
-  const cardHeight = mmToPt(layout.cardHeightMm);
+  const labelSize = getLabelSizeMm();
+  const labelWidth = mmToPt(labelSize.width);
+  const labelHeight = mmToPt(labelSize.height);
   const margin = mmToPt(layout.marginMm);
 
   const gapX =
     layout.columns > 1
-      ? (pageWidth - margin * 2 - cardWidth * layout.columns) /
+      ? (pageWidth - margin * 2 - labelWidth * layout.columns) /
         (layout.columns - 1)
       : 0;
   const gapY =
     layout.rows > 1
-      ? (pageHeight - margin * 2 - cardHeight * layout.rows) / (layout.rows - 1)
+      ? (pageHeight - margin * 2 - labelHeight * layout.rows) /
+        (layout.rows - 1)
       : 0;
 
   const perPage = layout.columns * layout.rows;
@@ -409,8 +550,8 @@ async function downloadPdf() {
     const column = position % layout.columns;
     const row = Math.floor(position / layout.columns);
 
-    const x = margin + column * (cardWidth + gapX);
-    const y = pageHeight - margin - cardHeight - row * (cardHeight + gapY);
+    const x = margin + column * (labelWidth + gapX);
+    const y = pageHeight - margin - labelHeight - row * (labelHeight + gapY);
 
     const pngBytes = await fetch(cards[i].dataUrl).then((res) =>
       res.arrayBuffer(),
@@ -419,8 +560,8 @@ async function downloadPdf() {
     page.drawImage(png, {
       x,
       y,
-      width: cardWidth,
-      height: cardHeight,
+      width: labelWidth,
+      height: labelHeight,
     });
   }
 
@@ -436,6 +577,14 @@ async function downloadPdf() {
   setStatus("PDF downloaded. Print at 100% scale for accurate labels.");
 }
 
+if (oversizeInput) {
+  const startingOversize = Number(oversizeInput.value);
+  if (Number.isFinite(startingOversize)) {
+    layout.oversizeMm = Math.max(0, startingOversize);
+  }
+}
+updateRenderMetrics();
+
 imageInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (file) {
@@ -447,6 +596,12 @@ imageInput.addEventListener("change", (event) => {
 scaleRange.addEventListener("input", (event) => {
   updateZoom(event.target.value);
 });
+
+if (oversizeInput) {
+  oversizeInput.addEventListener("input", (event) => {
+    applyOversize(event.target.value, { announce: true });
+  });
+}
 
 canvas.addEventListener("pointerdown", onPointerDown);
 canvas.addEventListener("pointermove", onPointerMove);
