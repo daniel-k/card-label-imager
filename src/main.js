@@ -21,6 +21,8 @@ const labelMeta = document.getElementById("labelMeta");
 const trimLineMeta = document.getElementById("trimLineMeta");
 
 const PX_PER_MM = 10;
+const KEYBOARD_MOVE_STEP = 12;
+const KEYBOARD_ZOOM_STEP = 0.05;
 
 const baseCard = {
   widthMm: 85.6,
@@ -271,6 +273,25 @@ function clampOffsets() {
   state.offsetY = clampOffset(state.offsetY, minY, maxY);
 }
 
+function getScaleBounds() {
+  const min = Number(scaleRange.min);
+  const max = Number(scaleRange.max);
+  return {
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) ? max : 1,
+  };
+}
+
+function getScaleStep() {
+  const step = Number(scaleRange.step);
+  return Number.isFinite(step) && step > 0 ? step : KEYBOARD_ZOOM_STEP;
+}
+
+function getStepDecimals(step) {
+  const [, decimals = ""] = step.toString().split(".");
+  return decimals.length;
+}
+
 function resetView() {
   if (!state.img) {
     return;
@@ -328,7 +349,11 @@ function applyOversize(value, options = {}) {
 }
 
 function updateZoom(value) {
-  state.zoom = Number(value);
+  const zoomValue = Number(value);
+  if (!Number.isFinite(zoomValue)) {
+    return;
+  }
+  state.zoom = zoomValue;
   scaleReadout.textContent = `${Math.round(state.zoom * 100)}%`;
   clampOffsets();
   drawCard();
@@ -342,7 +367,8 @@ function loadImage(source, options = {}) {
     state.img = img;
     resetView();
     setStatus(
-      successMessage ?? "Drag the image to position it inside the card.",
+      successMessage ??
+        "Drag or use the arrow keys to position it. Use + and - to zoom.",
     );
   };
   img.onerror = () => {
@@ -381,7 +407,7 @@ function handlePaste(event) {
 
   loadImage(file, {
     successMessage:
-      "Image pasted from clipboard. Drag to position it inside the card.",
+      "Image pasted from clipboard. Drag or use the arrow keys to position it. Use + and - to zoom.",
   });
 }
 
@@ -412,7 +438,7 @@ async function loadImageFromUrl(rawUrl) {
 
     loadImage(blob, {
       successMessage:
-        "Image loaded from URL. Drag to position it inside the card.",
+        "Image loaded from URL. Drag or use the arrow keys to position it. Use + and - to zoom.",
       errorMessage: "Could not load that image. Try another URL.",
     });
   } catch (error) {
@@ -462,6 +488,74 @@ function onPointerUp(event) {
   }
   state.dragging = false;
   canvas.releasePointerCapture(event.pointerId);
+}
+
+function isEditableTarget(target) {
+  if (!target) {
+    return false;
+  }
+  const tagName = target.tagName;
+  return (
+    tagName === "INPUT" ||
+    tagName === "TEXTAREA" ||
+    tagName === "SELECT" ||
+    target.isContentEditable
+  );
+}
+
+function handleKeyboardMove(deltaX, deltaY) {
+  state.offsetX += deltaX;
+  state.offsetY += deltaY;
+  clampOffsets();
+  drawCard();
+}
+
+function handleKeyboardZoom(direction) {
+  const { min, max } = getScaleBounds();
+  const step = getScaleStep();
+  const decimals = getStepDecimals(step);
+  const next = clampOffset(state.zoom + direction * step, min, max);
+  const snapped = clampOffset(Math.round(next / step) * step, min, max);
+  scaleRange.value = snapped.toFixed(decimals);
+  updateZoom(snapped);
+}
+
+function onKeyDown(event) {
+  if (!state.img || isEditableTarget(event.target)) {
+    return;
+  }
+
+  const isZoomIn =
+    event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
+  const isZoomOut =
+    event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+
+  if (isZoomIn || isZoomOut) {
+    event.preventDefault();
+    handleKeyboardZoom(isZoomIn ? 1 : -1);
+    return;
+  }
+
+  switch (event.key) {
+    case "ArrowUp":
+      event.preventDefault();
+      handleKeyboardMove(0, -KEYBOARD_MOVE_STEP);
+      break;
+    case "ArrowDown":
+      event.preventDefault();
+      handleKeyboardMove(0, KEYBOARD_MOVE_STEP);
+      break;
+    case "ArrowLeft":
+      event.preventDefault();
+      handleKeyboardMove(-KEYBOARD_MOVE_STEP, 0);
+      break;
+    case "ArrowRight":
+      event.preventDefault();
+      handleKeyboardMove(KEYBOARD_MOVE_STEP, 0);
+      break;
+    default:
+      break;
+  }
 }
 
 function addToPage() {
@@ -643,6 +737,7 @@ canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerup", onPointerUp);
 canvas.addEventListener("pointerleave", onPointerUp);
 window.addEventListener("paste", handlePaste);
+window.addEventListener("keydown", onKeyDown);
 urlInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
