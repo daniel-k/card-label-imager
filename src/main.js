@@ -121,6 +121,39 @@ function drawCard() {
   ctx.stroke();
 }
 
+function clampOffset(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getOffsetBounds() {
+  if (!state.img) {
+    return {
+      minX: 0,
+      maxX: 0,
+      minY: 0,
+      maxY: 0,
+    };
+  }
+  const scale = state.baseScale * state.zoom;
+  const imageWidth = state.img.width * scale;
+  const imageHeight = state.img.height * scale;
+  const maxOffsetX = Math.max(0, (imageWidth - card.width) / 2);
+  const maxOffsetY = Math.max(0, (imageHeight - card.height) / 2);
+
+  return {
+    minX: -maxOffsetX,
+    maxX: maxOffsetX,
+    minY: -maxOffsetY,
+    maxY: maxOffsetY,
+  };
+}
+
+function clampOffsets() {
+  const { minX, maxX, minY, maxY } = getOffsetBounds();
+  state.offsetX = clampOffset(state.offsetX, minX, maxX);
+  state.offsetY = clampOffset(state.offsetY, minY, maxY);
+}
+
 function resetView() {
   if (!state.img) {
     return;
@@ -133,6 +166,7 @@ function resetView() {
   state.zoom = 1;
   state.offsetX = 0;
   state.offsetY = 0;
+  clampOffsets();
   scaleRange.value = "1";
   scaleReadout.textContent = "100%";
   drawCard();
@@ -141,6 +175,7 @@ function resetView() {
 function updateZoom(value) {
   state.zoom = Number(value);
   scaleReadout.textContent = `${Math.round(state.zoom * 100)}%`;
+  clampOffsets();
   drawCard();
 }
 
@@ -262,6 +297,7 @@ function onPointerMove(event) {
   const pos = getPointerPosition(event);
   state.offsetX = state.startOffsetX + (pos.x - state.dragStartX);
   state.offsetY = state.startOffsetY + (pos.y - state.dragStartY);
+  clampOffsets();
   drawCard();
 }
 
