@@ -43,7 +43,7 @@
                 </div>
 
                 <div class="status" id="status">
-                    Upload or paste an image to begin.
+                    Upload, paste, or load an image URL to begin.
                 </div>
 
                 <div class="page-preview" id="pagePreview">
@@ -58,6 +58,22 @@
                     <p class="hint">
                         Tip: paste an image with Ctrl+V or Cmd+V anywhere on the
                         page.
+                    </p>
+                </div>
+
+                <div class="control-block">
+                    <label for="urlInput">Load from URL</label>
+                    <div class="url-row">
+                        <input
+                            type="url"
+                            id="urlInput"
+                            placeholder="https://example.com/image.jpg"
+                        />
+                        <button id="loadUrl" class="ghost">Load</button>
+                    </div>
+                    <p class="hint">
+                        Paste a direct image URL and press Load or Enter. The
+                        host must allow CORS.
                     </p>
                 </div>
 

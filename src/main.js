@@ -4,6 +4,8 @@ import { PDFDocument } from "pdf-lib";
 const canvas = document.getElementById("cardCanvas");
 const ctx = canvas.getContext("2d");
 const imageInput = document.getElementById("imageInput");
+const urlInput = document.getElementById("urlInput");
+const loadUrlBtn = document.getElementById("loadUrl");
 const scaleRange = document.getElementById("scaleRange");
 const scaleReadout = document.getElementById("scaleReadout");
 const addToPageBtn = document.getElementById("addToPage");
@@ -84,7 +86,7 @@ function drawPlaceholder() {
   ctx.font = '24px "Space Grotesk"';
   ctx.textAlign = "center";
   ctx.fillText(
-    "Upload or paste an image to start",
+    "Upload, paste, or load an image URL to start",
     card.width / 2,
     card.height / 2 + 8,
   );
@@ -142,18 +144,24 @@ function updateZoom(value) {
   drawCard();
 }
 
-function loadImage(file) {
+function loadImage(source, options = {}) {
+  const { successMessage, errorMessage } = options;
   const img = new Image();
   img.onload = () => {
     URL.revokeObjectURL(img.src);
     state.img = img;
     resetView();
-    setStatus("Drag the image to position it inside the card.");
+    setStatus(
+      successMessage ?? "Drag the image to position it inside the card.",
+    );
   };
   img.onerror = () => {
-    setStatus("Could not load that image. Try another file.");
+    URL.revokeObjectURL(img.src);
+    setStatus(
+      errorMessage ?? "Could not load that image. Try another file or URL.",
+    );
   };
-  img.src = URL.createObjectURL(file);
+  img.src = URL.createObjectURL(source);
 }
 
 function handlePaste(event) {
@@ -166,6 +174,9 @@ function handlePaste(event) {
     item.type.startsWith("image/"),
   );
   if (!imageItem) {
+    if (event.target === urlInput) {
+      return;
+    }
     setStatus(
       "Clipboard does not contain an image. Try copying an image first.",
     );
@@ -178,10 +189,47 @@ function handlePaste(event) {
     return;
   }
 
-  loadImage(file);
-  setStatus(
-    "Image pasted from clipboard. Drag to position it inside the card.",
-  );
+  loadImage(file, {
+    successMessage:
+      "Image pasted from clipboard. Drag to position it inside the card.",
+  });
+}
+
+async function loadImageFromUrl(rawUrl) {
+  let resolvedUrl;
+  try {
+    resolvedUrl = new URL(rawUrl, window.location.href).toString();
+  } catch (error) {
+    setStatus("Enter a valid image URL.");
+    return;
+  }
+
+  setStatus("Loading image from URL...");
+  try {
+    const response = await fetch(resolvedUrl);
+    if (!response.ok) {
+      setStatus(`Could not fetch the image (HTTP ${response.status}).`);
+      return;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const blob = await response.blob();
+    const blobType = blob.type || contentType;
+    if (blobType && !blobType.startsWith("image/")) {
+      setStatus("That URL does not point to an image file.");
+      return;
+    }
+
+    loadImage(blob, {
+      successMessage:
+        "Image loaded from URL. Drag to position it inside the card.",
+      errorMessage: "Could not load that image. Try another URL.",
+    });
+  } catch (error) {
+    setStatus(
+      "Could not load image from URL. Check the address and CORS settings.",
+    );
+  }
 }
 
 function getPointerPosition(event) {
@@ -227,7 +275,9 @@ function onPointerUp(event) {
 
 function addToPage() {
   if (!state.img) {
-    setStatus("Upload or paste an image before adding it to the sheet.");
+    setStatus(
+      "Upload, paste, or load an image URL before adding it to the sheet.",
+    );
     return;
   }
   const dataUrl = canvas.toDataURL("image/png");
@@ -355,6 +405,7 @@ imageInput.addEventListener("change", (event) => {
   if (file) {
     loadImage(file);
   }
+  event.target.value = "";
 });
 
 scaleRange.addEventListener("input", (event) => {
@@ -366,6 +417,20 @@ canvas.addEventListener("pointermove", onPointerMove);
 canvas.addEventListener("pointerup", onPointerUp);
 canvas.addEventListener("pointerleave", onPointerUp);
 window.addEventListener("paste", handlePaste);
+urlInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadUrlBtn.click();
+  }
+});
+loadUrlBtn.addEventListener("click", () => {
+  const url = urlInput.value.trim();
+  if (!url) {
+    setStatus("Paste an image URL to load.");
+    return;
+  }
+  loadImageFromUrl(url);
+});
 
 addToPageBtn.addEventListener("click", addToPage);
 clearPageBtn.addEventListener("click", clearPage);
