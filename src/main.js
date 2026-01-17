@@ -37,6 +37,8 @@ const layout = {
   a4HeightMm: 297,
   marginMm: 8,
   oversizeMm: 1,
+  looseRows: 4,
+  looseMarginMm: 10,
 };
 
 const render = {
@@ -631,6 +633,20 @@ function mmToPt(mm) {
   return (mm * 72) / 25.4;
 }
 
+function getPageVerticalLayout(count) {
+  const looseCapacity = layout.columns * layout.looseRows;
+  if (count <= looseCapacity) {
+    return {
+      rows: layout.looseRows,
+      marginMm: layout.looseMarginMm,
+    };
+  }
+  return {
+    rows: layout.rows,
+    marginMm: layout.marginMm,
+  };
+}
+
 async function downloadPdf() {
   if (cards.length === 0) {
     setStatus("Add at least one card before downloading the PDF.");
@@ -643,33 +659,40 @@ async function downloadPdf() {
   const labelSize = getLabelSizeMm();
   const labelWidth = mmToPt(labelSize.width);
   const labelHeight = mmToPt(labelSize.height);
-  const margin = mmToPt(layout.marginMm);
+  const marginX = mmToPt(layout.marginMm);
 
   const gapX =
     layout.columns > 1
-      ? (pageWidth - margin * 2 - labelWidth * layout.columns) /
+      ? (pageWidth - marginX * 2 - labelWidth * layout.columns) /
         (layout.columns - 1)
-      : 0;
-  const gapY =
-    layout.rows > 1
-      ? (pageHeight - margin * 2 - labelHeight * layout.rows) /
-        (layout.rows - 1)
       : 0;
 
   const perPage = layout.columns * layout.rows;
   let page = null;
+  let pageRows = layout.rows;
+  let marginY = mmToPt(layout.marginMm);
+  let gapY = 0;
 
   for (let i = 0; i < cards.length; i += 1) {
     if (i % perPage === 0) {
       page = pdfDoc.addPage([pageWidth, pageHeight]);
+      const remaining = cards.length - i;
+      const pageCount = Math.min(perPage, remaining);
+      const verticalLayout = getPageVerticalLayout(pageCount);
+      pageRows = verticalLayout.rows;
+      marginY = mmToPt(verticalLayout.marginMm);
+      gapY =
+        pageRows > 1
+          ? (pageHeight - marginY * 2 - labelHeight * pageRows) / (pageRows - 1)
+          : 0;
     }
 
     const position = i % perPage;
     const column = position % layout.columns;
     const row = Math.floor(position / layout.columns);
 
-    const x = margin + column * (labelWidth + gapX);
-    const y = pageHeight - margin - labelHeight - row * (labelHeight + gapY);
+    const x = marginX + column * (labelWidth + gapX);
+    const y = pageHeight - marginY - labelHeight - row * (labelHeight + gapY);
 
     const pngBytes = await fetch(cards[i].dataUrl).then((res) =>
       res.arrayBuffer(),
