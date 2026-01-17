@@ -1,74 +1,100 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Card Label Imager</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='5' width='20' height='14' rx='2' fill='%23E46F3A'/%3E%3Cpath d='M6 9h12' stroke='%23F7F1E6' stroke-width='2'/%3E%3Cpath d='M6 13h8' stroke='%23F7F1E6' stroke-width='2'/%3E%3C/svg%3E" />
-  </head>
-  <body>
-    <div class="bg-shape"></div>
-    <header class="hero">
-      <p class="eyebrow">Card label imager</p>
-      <h1>Compose clean, print-ready card labels.</h1>
-      <p class="lede">
-        Drop in an image, frame it inside an ID-1 card mask, then build a printable A4 PDF sheet in a few clicks.
-      </p>
-    </header>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Card Label Imager</title>
+        <link
+            rel="icon"
+            type="image/svg+xml"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='5' width='20' height='14' rx='2' fill='%23E46F3A'/%3E%3Cpath d='M6 9h12' stroke='%23F7F1E6' stroke-width='2'/%3E%3Cpath d='M6 13h8' stroke='%23F7F1E6' stroke-width='2'/%3E%3C/svg%3E"
+        />
+    </head>
+    <body>
+        <div class="bg-shape"></div>
+        <header class="hero">
+            <p class="eyebrow">Card label imager</p>
+            <h1>Compose clean, print-ready card labels.</h1>
+            <p class="lede">
+                Drop in an image, frame it inside an ID-1 card mask, then build
+                a printable A4 PDF sheet in a few clicks.
+            </p>
+        </header>
 
-    <main class="layout">
-      <section class="card-panel">
-        <div class="card-wrap">
-          <canvas id="cardCanvas" width="856" height="539" aria-label="Card preview canvas"></canvas>
-          <div class="card-guide">Drag to position. Use the scale slider to zoom.</div>
-        </div>
+        <main class="layout">
+            <section class="card-panel">
+                <div class="card-wrap">
+                    <canvas
+                        id="cardCanvas"
+                        width="856"
+                        height="539"
+                        aria-label="Card preview canvas"
+                    ></canvas>
+                    <div class="card-guide">
+                        Drag to position. Use the scale slider to zoom.
+                    </div>
+                </div>
 
-        <div class="actions">
-          <button id="addToPage" class="primary">Add to page</button>
-          <button id="downloadPdf">Download PDF</button>
-          <button id="resetView" class="ghost">Reset view</button>
-          <button id="clearPage" class="ghost">Clear page</button>
-        </div>
+                <div class="actions">
+                    <button id="addToPage" class="primary">Add to page</button>
+                    <button id="downloadPdf">Download PDF</button>
+                    <button id="resetView" class="ghost">Reset view</button>
+                    <button id="clearPage" class="ghost">Clear page</button>
+                </div>
 
-        <div class="status" id="status">Upload an image to begin.</div>
+                <div class="status" id="status">
+                    Upload or paste an image to begin.
+                </div>
 
-        <div class="page-preview" id="pagePreview">
-          <div class="placeholder">No cards on the sheet yet.</div>
-        </div>
-      </section>
+                <div class="page-preview" id="pagePreview">
+                    <div class="placeholder">No cards on the sheet yet.</div>
+                </div>
+            </section>
 
-      <aside class="controls">
-        <div class="control-block">
-          <label for="imageInput">Upload image</label>
-          <input type="file" id="imageInput" accept="image/*" />
-        </div>
+            <aside class="controls">
+                <div class="control-block">
+                    <label for="imageInput">Upload image</label>
+                    <input type="file" id="imageInput" accept="image/*" />
+                    <p class="hint">
+                        Tip: paste an image with Ctrl+V or Cmd+V anywhere on the
+                        page.
+                    </p>
+                </div>
 
-        <div class="control-block">
-          <div class="control-row">
-            <label for="scaleRange">Scale</label>
-            <span class="pill" id="scaleReadout">100%</span>
-          </div>
-          <input type="range" id="scaleRange" min="0.5" max="3" step="0.01" value="1" />
-        </div>
+                <div class="control-block">
+                    <div class="control-row">
+                        <label for="scaleRange">Scale</label>
+                        <span class="pill" id="scaleReadout">100%</span>
+                    </div>
+                    <input
+                        type="range"
+                        id="scaleRange"
+                        min="0.5"
+                        max="3"
+                        step="0.01"
+                        value="1"
+                    />
+                </div>
 
-        <div class="control-block">
-          <h2>Layout</h2>
-          <ul class="layout-meta">
-            <li>Format: A4 (210 × 297 mm)</li>
-            <li>Card size: ID-1 (85.6 × 53.98 mm)</li>
-            <li>Grid: 2 columns × 4 rows</li>
-          </ul>
-        </div>
+                <div class="control-block">
+                    <h2>Layout</h2>
+                    <ul class="layout-meta">
+                        <li>Format: A4 (210 × 297 mm)</li>
+                        <li>Card size: ID-1 (85.6 × 53.98 mm)</li>
+                        <li>Grid: 2 columns × 4 rows</li>
+                    </ul>
+                </div>
 
-        <div class="control-block note">
-          <h2>Tips</h2>
-          <p>
-            Keep important artwork inside the rounded corners. The exported PDF keeps your framing exactly as previewed.
-          </p>
-        </div>
-      </aside>
-    </main>
+                <div class="control-block note">
+                    <h2>Tips</h2>
+                    <p>
+                        Keep important artwork inside the rounded corners. The
+                        exported PDF keeps your framing exactly as previewed.
+                    </p>
+                </div>
+            </aside>
+        </main>
 
-    <script type="module" src="/src/main.js"></script>
-  </body>
+        <script type="module" src="/src/main.js"></script>
+    </body>
 </html>

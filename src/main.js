@@ -1,17 +1,17 @@
-import './style.css';
-import { PDFDocument } from 'pdf-lib';
+import "./style.css";
+import { PDFDocument } from "pdf-lib";
 
-const canvas = document.getElementById('cardCanvas');
-const ctx = canvas.getContext('2d');
-const imageInput = document.getElementById('imageInput');
-const scaleRange = document.getElementById('scaleRange');
-const scaleReadout = document.getElementById('scaleReadout');
-const addToPageBtn = document.getElementById('addToPage');
-const downloadPdfBtn = document.getElementById('downloadPdf');
-const clearPageBtn = document.getElementById('clearPage');
-const resetViewBtn = document.getElementById('resetView');
-const pagePreview = document.getElementById('pagePreview');
-const statusEl = document.getElementById('status');
+const canvas = document.getElementById("cardCanvas");
+const ctx = canvas.getContext("2d");
+const imageInput = document.getElementById("imageInput");
+const scaleRange = document.getElementById("scaleRange");
+const scaleReadout = document.getElementById("scaleReadout");
+const addToPageBtn = document.getElementById("addToPage");
+const downloadPdfBtn = document.getElementById("downloadPdf");
+const clearPageBtn = document.getElementById("clearPage");
+const resetViewBtn = document.getElementById("resetView");
+const pagePreview = document.getElementById("pagePreview");
+const statusEl = document.getElementById("status");
 
 const card = {
   width: canvas.width,
@@ -63,9 +63,9 @@ function drawPlaceholder() {
   ctx.save();
   roundedRectPath(ctx, 0, 0, card.width, card.height, card.radius);
   ctx.clip();
-  ctx.fillStyle = '#f1e7d8';
+  ctx.fillStyle = "#f1e7d8";
   ctx.fillRect(0, 0, card.width, card.height);
-  ctx.strokeStyle = 'rgba(31, 43, 42, 0.08)';
+  ctx.strokeStyle = "rgba(31, 43, 42, 0.08)";
   ctx.lineWidth = 2;
   for (let i = -card.height; i < card.width; i += 40) {
     ctx.beginPath();
@@ -75,15 +75,19 @@ function drawPlaceholder() {
   }
   ctx.restore();
 
-  ctx.strokeStyle = 'rgba(42, 106, 115, 0.5)';
+  ctx.strokeStyle = "rgba(42, 106, 115, 0.5)";
   ctx.lineWidth = 4;
   roundedRectPath(ctx, 2, 2, card.width - 4, card.height - 4, card.radius);
   ctx.stroke();
 
-  ctx.fillStyle = '#516261';
+  ctx.fillStyle = "#516261";
   ctx.font = '24px "Space Grotesk"';
-  ctx.textAlign = 'center';
-  ctx.fillText('Upload an image to start', card.width / 2, card.height / 2 + 8);
+  ctx.textAlign = "center";
+  ctx.fillText(
+    "Upload or paste an image to start",
+    card.width / 2,
+    card.height / 2 + 8,
+  );
 }
 
 function drawCard() {
@@ -97,7 +101,7 @@ function drawCard() {
   ctx.save();
   roundedRectPath(ctx, 0, 0, card.width, card.height, card.radius);
   ctx.clip();
-  ctx.fillStyle = '#f7f1e6';
+  ctx.fillStyle = "#f7f1e6";
   ctx.fillRect(0, 0, card.width, card.height);
 
   const scale = state.baseScale * state.zoom;
@@ -109,7 +113,7 @@ function drawCard() {
   ctx.drawImage(state.img, x, y, imageWidth, imageHeight);
   ctx.restore();
 
-  ctx.strokeStyle = 'rgba(42, 106, 115, 0.6)';
+  ctx.strokeStyle = "rgba(42, 106, 115, 0.6)";
   ctx.lineWidth = 4;
   roundedRectPath(ctx, 2, 2, card.width - 4, card.height - 4, card.radius);
   ctx.stroke();
@@ -119,13 +123,16 @@ function resetView() {
   if (!state.img) {
     return;
   }
-  const fitScale = Math.max(card.width / state.img.width, card.height / state.img.height);
+  const fitScale = Math.max(
+    card.width / state.img.width,
+    card.height / state.img.height,
+  );
   state.baseScale = fitScale;
   state.zoom = 1;
   state.offsetX = 0;
   state.offsetY = 0;
-  scaleRange.value = '1';
-  scaleReadout.textContent = '100%';
+  scaleRange.value = "1";
+  scaleReadout.textContent = "100%";
   drawCard();
 }
 
@@ -141,12 +148,40 @@ function loadImage(file) {
     URL.revokeObjectURL(img.src);
     state.img = img;
     resetView();
-    setStatus('Drag the image to position it inside the card.');
+    setStatus("Drag the image to position it inside the card.");
   };
   img.onerror = () => {
-    setStatus('Could not load that image. Try another file.');
+    setStatus("Could not load that image. Try another file.");
   };
   img.src = URL.createObjectURL(file);
+}
+
+function handlePaste(event) {
+  const items = event.clipboardData?.items;
+  if (!items || items.length === 0) {
+    return;
+  }
+
+  const imageItem = Array.from(items).find((item) =>
+    item.type.startsWith("image/"),
+  );
+  if (!imageItem) {
+    setStatus(
+      "Clipboard does not contain an image. Try copying an image first.",
+    );
+    return;
+  }
+
+  const file = imageItem.getAsFile();
+  if (!file) {
+    setStatus("Could not read image from clipboard.");
+    return;
+  }
+
+  loadImage(file);
+  setStatus(
+    "Image pasted from clipboard. Drag to position it inside the card.",
+  );
 }
 
 function getPointerPosition(event) {
@@ -192,48 +227,50 @@ function onPointerUp(event) {
 
 function addToPage() {
   if (!state.img) {
-    setStatus('Upload an image before adding it to the sheet.');
+    setStatus("Upload or paste an image before adding it to the sheet.");
     return;
   }
-  const dataUrl = canvas.toDataURL('image/png');
+  const dataUrl = canvas.toDataURL("image/png");
   cards.push({
     id: Date.now().toString(16),
     dataUrl,
   });
   renderPagePreview();
-  setStatus(`Added ${cards.length} card${cards.length === 1 ? '' : 's'} to the sheet.`);
+  setStatus(
+    `Added ${cards.length} card${cards.length === 1 ? "" : "s"} to the sheet.`,
+  );
 }
 
 function removeCard(index) {
   cards.splice(index, 1);
   renderPagePreview();
   if (cards.length === 0) {
-    setStatus('Sheet cleared. Add a new card when ready.');
+    setStatus("Sheet cleared. Add a new card when ready.");
   }
 }
 
 function renderPagePreview() {
-  pagePreview.innerHTML = '';
+  pagePreview.innerHTML = "";
   if (cards.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'placeholder';
-    empty.textContent = 'No cards on the sheet yet.';
+    const empty = document.createElement("div");
+    empty.className = "placeholder";
+    empty.textContent = "No cards on the sheet yet.";
     pagePreview.appendChild(empty);
     return;
   }
 
   cards.forEach((cardItem, index) => {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'card-thumb';
+    const wrapper = document.createElement("div");
+    wrapper.className = "card-thumb";
 
-    const img = document.createElement('img');
+    const img = document.createElement("img");
     img.src = cardItem.dataUrl;
     img.alt = `Card preview ${index + 1}`;
 
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = 'Remove';
-    button.addEventListener('click', () => removeCard(index));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Remove";
+    button.addEventListener("click", () => removeCard(index));
 
     wrapper.appendChild(img);
     wrapper.appendChild(button);
@@ -244,7 +281,7 @@ function renderPagePreview() {
 function clearPage() {
   cards.length = 0;
   renderPagePreview();
-  setStatus('Sheet cleared.');
+  setStatus("Sheet cleared.");
 }
 
 function mmToPt(mm) {
@@ -253,7 +290,7 @@ function mmToPt(mm) {
 
 async function downloadPdf() {
   if (cards.length === 0) {
-    setStatus('Add at least one card before downloading the PDF.');
+    setStatus("Add at least one card before downloading the PDF.");
     return;
   }
 
@@ -266,7 +303,8 @@ async function downloadPdf() {
 
   const gapX =
     layout.columns > 1
-      ? (pageWidth - margin * 2 - cardWidth * layout.columns) / (layout.columns - 1)
+      ? (pageWidth - margin * 2 - cardWidth * layout.columns) /
+        (layout.columns - 1)
       : 0;
   const gapY =
     layout.rows > 1
@@ -288,7 +326,9 @@ async function downloadPdf() {
     const x = margin + column * (cardWidth + gapX);
     const y = pageHeight - margin - cardHeight - row * (cardHeight + gapY);
 
-    const pngBytes = await fetch(cards[i].dataUrl).then((res) => res.arrayBuffer());
+    const pngBytes = await fetch(cards[i].dataUrl).then((res) =>
+      res.arrayBuffer(),
+    );
     const png = await pdfDoc.embedPng(pngBytes);
     page.drawImage(png, {
       x,
@@ -299,37 +339,38 @@ async function downloadPdf() {
   }
 
   const pdfBytes = await pdfDoc.save();
-  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const blob = new Blob([pdfBytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
-  link.download = 'card-labels.pdf';
+  link.download = "card-labels.pdf";
   link.click();
   URL.revokeObjectURL(url);
 
-  setStatus('PDF downloaded. Print at 100% scale for accurate labels.');
+  setStatus("PDF downloaded. Print at 100% scale for accurate labels.");
 }
 
-imageInput.addEventListener('change', (event) => {
+imageInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (file) {
     loadImage(file);
   }
 });
 
-scaleRange.addEventListener('input', (event) => {
+scaleRange.addEventListener("input", (event) => {
   updateZoom(event.target.value);
 });
 
-canvas.addEventListener('pointerdown', onPointerDown);
-canvas.addEventListener('pointermove', onPointerMove);
-canvas.addEventListener('pointerup', onPointerUp);
-canvas.addEventListener('pointerleave', onPointerUp);
+canvas.addEventListener("pointerdown", onPointerDown);
+canvas.addEventListener("pointermove", onPointerMove);
+canvas.addEventListener("pointerup", onPointerUp);
+canvas.addEventListener("pointerleave", onPointerUp);
+window.addEventListener("paste", handlePaste);
 
-addToPageBtn.addEventListener('click', addToPage);
-clearPageBtn.addEventListener('click', clearPage);
-resetViewBtn.addEventListener('click', resetView);
-downloadPdfBtn.addEventListener('click', downloadPdf);
+addToPageBtn.addEventListener("click", addToPage);
+clearPageBtn.addEventListener("click", clearPage);
+resetViewBtn.addEventListener("click", resetView);
+downloadPdfBtn.addEventListener("click", downloadPdf);
 
 renderPagePreview();
 drawCard();

@@ -234,6 +234,12 @@ button.ghost:hover {
   margin-bottom: 8px;
 }
 
+.hint {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .control-row {
   display: flex;
   justify-content: space-between;
