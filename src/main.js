@@ -32,10 +32,10 @@ const baseCard = {
 
 const layout = {
   columns: 2,
-  rows: 4,
+  rows: 5,
   a4WidthMm: 210,
   a4HeightMm: 297,
-  marginMm: 10,
+  marginMm: 8,
   oversizeMm: 1,
 };
 
