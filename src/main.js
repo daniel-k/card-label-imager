@@ -26,6 +26,9 @@ const trimLineMeta = document.getElementById("trimLineMeta");
 const PX_PER_MM = 10;
 const KEYBOARD_MOVE_STEP = 12;
 const KEYBOARD_ZOOM_STEP = 0.05;
+const PDF_IMAGE_FORMAT = "image/jpeg";
+const PDF_IMAGE_QUALITY = 0.82;
+const PDF_IMAGE_BACKGROUND = "#ffffff";
 
 const baseCard = {
   widthMm: 85.6,
@@ -605,7 +608,14 @@ function addToPage() {
   showBleedOverlay = false;
   showTrimGuide = includeTrimInExport;
   drawCard();
-  const dataUrl = canvas.toDataURL("image/png");
+  if (PDF_IMAGE_FORMAT === "image/jpeg") {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = PDF_IMAGE_BACKGROUND;
+    ctx.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
+    ctx.restore();
+  }
+  const dataUrl = canvas.toDataURL(PDF_IMAGE_FORMAT, PDF_IMAGE_QUALITY);
   showBleedOverlay = previousBleedOverlay;
   showTrimGuide = previousTrimGuide;
   drawCard();
@@ -739,11 +749,16 @@ async function downloadPdf() {
       const x = marginX + column * (labelWidth + gapX);
       const y = pageHeight - marginY - labelHeight - row * (labelHeight + gapY);
 
-      const pngBytes = await fetch(cards[i].dataUrl).then((res) =>
+      const imageBytes = await fetch(cards[i].dataUrl).then((res) =>
         res.arrayBuffer(),
       );
-      const png = await pdfDoc.embedPng(pngBytes);
-      page.drawImage(png, {
+      const isJpeg =
+        cards[i].dataUrl.startsWith("data:image/jpeg") ||
+        cards[i].dataUrl.startsWith("data:image/jpg");
+      const image = isJpeg
+        ? await pdfDoc.embedJpg(imageBytes)
+        : await pdfDoc.embedPng(imageBytes);
+      page.drawImage(image, {
         x,
         y,
         width: labelWidth,
