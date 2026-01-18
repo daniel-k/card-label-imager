@@ -42,3 +42,14 @@ Run the container:
 ```bash
 docker run --rm -p 8080:80 card-image:prod
 ```
+
+## Fonts
+
+This project uses the following fonts:
+
+- Fraunces — © The Fraunces Project Authors — licensed under the SIL Open Font
+  License 1.1
+- Space Grotesk — © Florian Karsten — licensed under the SIL Open Font License
+  1.1
+
+Font licenses: https://openfontlicense.org/
