@@ -155,6 +155,20 @@ function updateTrimLineToggle() {
   }
 }
 
+function updateOversizeLock() {
+  if (!oversizeInput) {
+    return;
+  }
+  const hasCards = cards.length > 0;
+  oversizeInput.disabled = hasCards;
+  oversizeInput.setAttribute("aria-disabled", hasCards.toString());
+  if (hasCards) {
+    oversizeInput.title = "Clear the page to change oversize per edge.";
+  } else {
+    oversizeInput.removeAttribute("title");
+  }
+}
+
 function updateRenderMetrics() {
   const labelSize = getLabelSizeMm();
   render.cardWidthPx = Math.round(baseCard.widthMm * PX_PER_MM);
@@ -635,6 +649,7 @@ function removeCard(index) {
 
 function renderPagePreview() {
   pagePreview.innerHTML = "";
+  updateOversizeLock();
   if (cards.length === 0) {
     const empty = document.createElement("div");
     empty.className = "placeholder";
