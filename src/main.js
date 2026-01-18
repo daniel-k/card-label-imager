@@ -88,7 +88,7 @@ let persistTimeout = null;
 let hasPersistError = false;
 let previewResizeTimeout = null;
 let editingCardId = null;
-let trimLineRefreshToken = 0;
+let cardPreviewRefreshToken = 0;
 
 function getCardCount() {
   return cards.reduce((count, card) => count + (card ? 1 : 0), 0);
@@ -293,11 +293,10 @@ function updateOversizeLock() {
   if (!oversizeInput) {
     return;
   }
-  const hasCards = getCardCount() > 0;
-  oversizeInput.disabled = hasCards;
-  oversizeInput.setAttribute("aria-disabled", hasCards.toString());
-  if (hasCards) {
-    oversizeInput.title = "Clear the page to change oversize per edge.";
+  oversizeInput.disabled = false;
+  oversizeInput.removeAttribute("aria-disabled");
+  if (getCardCount() > 0) {
+    oversizeInput.title = "Updates all cards on the sheet.";
   } else {
     oversizeInput.removeAttribute("title");
   }
@@ -536,7 +535,12 @@ function applySavedImageState(saved) {
 }
 
 function applyOversize(value, options = {}) {
-  const { announce = false, clearCards = true, persist = true } = options;
+  const {
+    announce = false,
+    clearCards = false,
+    persist = true,
+    refreshCards = true,
+  } = options;
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
     return;
@@ -553,24 +557,25 @@ function applyOversize(value, options = {}) {
   }
   updateRenderMetrics();
   if (state.img) {
-    resetView();
+    clampOffsets();
+    drawCard();
   } else {
     drawCard();
+  }
+  renderPagePreview();
+  if (hadCards && !clearCards && refreshCards) {
+    refreshCardPreviews();
   }
   if (persist) {
     schedulePersist();
   }
   if (announce) {
-    if (hadCards && state.img) {
-      setStatus("Oversize updated. Sheet cleared and image framing reset.");
-      return;
-    }
-    if (hadCards) {
+    if (hadCards && clearCards) {
       setStatus("Oversize updated. Sheet cleared.");
       return;
     }
-    if (state.img) {
-      setStatus("Oversize updated. Image framing reset to cover the bleed.");
+    if (hadCards) {
+      setStatus("Oversize updated. Cards refreshed.");
       return;
     }
     setStatus("Oversize updated.");
@@ -949,12 +954,11 @@ async function rebuildCardDataUrl(
   return renderCanvas.toDataURL(PDF_IMAGE_FORMAT, PDF_IMAGE_QUALITY);
 }
 
-async function refreshTrimLinePreviews() {
+async function refreshCardPreviews(includeTrimLine = includeTrimInExport) {
   if (cards.length === 0) {
     return;
   }
-  const refreshToken = (trimLineRefreshToken += 1);
-  const includeTrimLine = includeTrimInExport;
+  const refreshToken = (cardPreviewRefreshToken += 1);
   const renderCanvas = document.createElement("canvas");
   renderCanvas.width = render.labelWidthPx;
   renderCanvas.height = render.labelHeightPx;
@@ -964,7 +968,7 @@ async function refreshTrimLinePreviews() {
   }
   let updated = false;
   for (let i = 0; i < cards.length; i += 1) {
-    if (refreshToken !== trimLineRefreshToken) {
+    if (refreshToken !== cardPreviewRefreshToken) {
       return;
     }
     const cardItem = cards[i];
@@ -977,7 +981,7 @@ async function refreshTrimLinePreviews() {
       renderCanvas,
       renderContext,
     );
-    if (refreshToken !== trimLineRefreshToken) {
+    if (refreshToken !== cardPreviewRefreshToken) {
       return;
     }
     if (dataUrl) {
@@ -985,7 +989,7 @@ async function refreshTrimLinePreviews() {
       updated = true;
     }
   }
-  if (refreshToken !== trimLineRefreshToken) {
+  if (refreshToken !== cardPreviewRefreshToken) {
     return;
   }
   if (updated) {
@@ -1500,6 +1504,7 @@ function applyPersistedState(saved) {
       announce: false,
       clearCards: false,
       persist: false,
+      refreshCards: false,
     });
   }
 
@@ -1587,7 +1592,7 @@ if (toggleTrimLineBtn) {
     setStatus(
       `Trim line in PDF ${includeTrimInExport ? "enabled" : "disabled"}.`,
     );
-    refreshTrimLinePreviews();
+    refreshCardPreviews();
     schedulePersist();
   });
 }
