@@ -35,6 +35,7 @@ const PDF_IMAGE_BACKGROUND = "#ffffff";
 const STORAGE_KEY = "card-label-imager-state";
 const STORAGE_VERSION = 1;
 const PERSIST_DEBOUNCE_MS = 300;
+const PREVIEW_RESIZE_DEBOUNCE_MS = 120;
 
 const baseCard = {
   widthMm: 85.6,
@@ -83,6 +84,7 @@ const downloadPdfLabel = downloadPdfBtn?.textContent ?? "Download PDF";
 let isDownloading = false;
 let persistTimeout = null;
 let hasPersistError = false;
+let previewResizeTimeout = null;
 
 function setStatus(message) {
   statusEl.textContent = message;
@@ -792,23 +794,101 @@ function renderPagePreview() {
     return;
   }
 
-  cards.forEach((cardItem, index) => {
-    const wrapper = document.createElement("div");
-    wrapper.className = "card-thumb";
+  const perPage = layout.columns * layout.rows;
+  const totalPages = Math.ceil(cards.length / perPage);
 
-    const img = document.createElement("img");
-    img.src = cardItem.dataUrl;
-    img.alt = `Card preview ${index + 1}`;
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+    const page = document.createElement("div");
+    page.className = "preview-page";
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "Remove";
-    button.addEventListener("click", () => removeCard(index));
+    const label = document.createElement("span");
+    label.className = "preview-page-label";
+    label.textContent = `Page ${pageIndex + 1}`;
+    page.appendChild(label);
 
-    wrapper.appendChild(img);
-    wrapper.appendChild(button);
-    pagePreview.appendChild(wrapper);
+    const grid = document.createElement("div");
+    grid.className = "preview-grid";
+
+    for (let slot = 0; slot < perPage; slot += 1) {
+      const cardIndex = pageIndex * perPage + slot;
+      const slotWrap = document.createElement("div");
+      slotWrap.className = "preview-slot";
+      if (cardIndex >= cards.length) {
+        slotWrap.classList.add("empty");
+        grid.appendChild(slotWrap);
+        continue;
+      }
+
+      const cardItem = cards[cardIndex];
+      const img = document.createElement("img");
+      img.src = cardItem.dataUrl;
+      img.alt = `Card preview ${cardIndex + 1}`;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "preview-remove";
+      button.textContent = "Remove";
+      button.addEventListener("click", () => removeCard(cardIndex));
+
+      slotWrap.appendChild(img);
+      slotWrap.appendChild(button);
+      grid.appendChild(slotWrap);
+    }
+
+    page.appendChild(grid);
+    pagePreview.appendChild(page);
+  }
+
+  requestAnimationFrame(updatePreviewSizing);
+}
+
+function updatePreviewSizing() {
+  if (!pagePreview) {
+    return;
+  }
+  const labelSize = getLabelSizeMm();
+  const pages = pagePreview.querySelectorAll(".preview-page");
+  pages.forEach((page) => {
+    const grid = page.querySelector(".preview-grid");
+    if (!grid) {
+      return;
+    }
+    const pageWidth = page.clientWidth;
+    const pageHeight = page.clientHeight;
+    if (!pageWidth || !pageHeight) {
+      return;
+    }
+    const marginX = (layout.marginMm / layout.a4WidthMm) * pageWidth;
+    const marginY = (layout.marginMm / layout.a4HeightMm) * pageHeight;
+    const labelWidth = (labelSize.width / layout.a4WidthMm) * pageWidth;
+    const labelHeight = (labelSize.height / layout.a4HeightMm) * pageHeight;
+    const gapX =
+      layout.columns > 1
+        ? (pageWidth - marginX * 2 - labelWidth * layout.columns) /
+          (layout.columns - 1)
+        : 0;
+    const gapY =
+      layout.rows > 1
+        ? (pageHeight - marginY * 2 - labelHeight * layout.rows) /
+          (layout.rows - 1)
+        : 0;
+
+    grid.style.padding = `${marginY}px ${marginX}px`;
+    grid.style.columnGap = `${Math.max(0, gapX)}px`;
+    grid.style.rowGap = `${Math.max(0, gapY)}px`;
+    grid.style.gridTemplateColumns = `repeat(${layout.columns}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${layout.rows}, 1fr)`;
   });
+}
+
+function schedulePreviewSizing() {
+  if (previewResizeTimeout) {
+    clearTimeout(previewResizeTimeout);
+  }
+  previewResizeTimeout = setTimeout(() => {
+    previewResizeTimeout = null;
+    updatePreviewSizing();
+  }, PREVIEW_RESIZE_DEBOUNCE_MS);
 }
 
 function clearPage() {
@@ -1100,6 +1180,7 @@ if (importSetupBtn && importSetupInput) {
   });
 }
 window.addEventListener("beforeunload", persistState);
+window.addEventListener("resize", schedulePreviewSizing);
 
 if (!restoredState) {
   renderPagePreview();
