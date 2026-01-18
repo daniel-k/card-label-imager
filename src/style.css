@@ -163,6 +163,7 @@ button.primary:hover {
 button#downloadPdf {
     background: var(--accent-2);
     color: #f4fbfc;
+    margin: 16px 0 8px;
 }
 
 button#downloadPdf:hover {
