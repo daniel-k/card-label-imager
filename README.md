@@ -1,3 +1,5 @@
+[![Publish Docker image](https://github.com/daniel-k/card-label-imager/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/daniel-k/card-label-imager/actions/workflows/docker-publish.yml)
+
 # Card label imager
 
 Generate printable A4 PDFs of ID-1 card labels. Upload an image, paste it from
