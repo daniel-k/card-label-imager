@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:single": "npm run build && node scripts/build-single-html.js",
     "preview": "vite preview"
   },
   "dependencies": {
