@@ -86,6 +86,24 @@ let persistTimeout = null;
 let hasPersistError = false;
 let previewResizeTimeout = null;
 
+function getCardCount() {
+  return cards.reduce((count, card) => count + (card ? 1 : 0), 0);
+}
+
+function trimTrailingEmptySlots() {
+  let lastIndex = cards.length - 1;
+  while (lastIndex >= 0 && !cards[lastIndex]) {
+    lastIndex -= 1;
+  }
+  cards.length = lastIndex + 1;
+}
+
+function ensureSlots(totalSlots) {
+  while (cards.length < totalSlots) {
+    cards.push(null);
+  }
+}
+
 function setStatus(message) {
   statusEl.textContent = message;
 }
@@ -144,12 +162,14 @@ function buildPersistedState() {
             offsetY: state.offsetY,
           }
         : null,
-    cards: cards
-      .map((card) => ({
-        id: card.id,
-        dataUrl: card.dataUrl,
-      }))
-      .filter((card) => typeof card.dataUrl === "string"),
+    cards: cards.map((card) =>
+      card && typeof card.dataUrl === "string"
+        ? {
+            id: card.id,
+            dataUrl: card.dataUrl,
+          }
+        : null,
+    ),
   };
 }
 
@@ -245,7 +265,7 @@ function updateOversizeLock() {
   if (!oversizeInput) {
     return;
   }
-  const hasCards = cards.length > 0;
+  const hasCards = getCardCount() > 0;
   oversizeInput.disabled = hasCards;
   oversizeInput.setAttribute("aria-disabled", hasCards.toString());
   if (hasCards) {
@@ -482,7 +502,7 @@ function applyOversize(value, options = {}) {
   if (oversizeInput) {
     oversizeInput.value = layout.oversizeMm.toString();
   }
-  const hadCards = cards.length > 0;
+  const hadCards = getCardCount() > 0;
   if (hadCards && clearCards) {
     cards.length = 0;
     renderPagePreview();
@@ -763,22 +783,36 @@ function addToPage() {
   showBleedOverlay = previousBleedOverlay;
   showTrimGuide = previousTrimGuide;
   drawCard();
-  cards.push({
+  const cardItem = {
     id: Date.now().toString(16),
     dataUrl,
-  });
+  };
+  const emptySlotIndex = cards.findIndex((card) => !card);
+  if (emptySlotIndex === -1) {
+    cards.push(cardItem);
+  } else {
+    cards[emptySlotIndex] = cardItem;
+  }
   renderPagePreview();
   schedulePersist();
+  const totalCards = getCardCount();
   setStatus(
-    `Added ${cards.length} card${cards.length === 1 ? "" : "s"} to the sheet.`,
+    `Added ${totalCards} card${totalCards === 1 ? "" : "s"} to the sheet.`,
   );
 }
 
 function removeCard(index) {
-  cards.splice(index, 1);
+  if (!Number.isInteger(index) || index < 0 || index >= cards.length) {
+    return;
+  }
+  if (!cards[index]) {
+    return;
+  }
+  cards[index] = null;
+  trimTrailingEmptySlots();
   renderPagePreview();
   schedulePersist();
-  if (cards.length === 0) {
+  if (getCardCount() === 0) {
     setStatus("Sheet cleared. Add a new card when ready.");
   }
 }
@@ -787,27 +821,30 @@ function moveCard(fromIndex, toIndex) {
   if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
     return;
   }
-  if (
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= cards.length ||
-    toIndex >= cards.length ||
-    fromIndex === toIndex
-  ) {
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
     return;
   }
-  const [moved] = cards.splice(fromIndex, 1);
-  const targetIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
-  cards.splice(targetIndex, 0, moved);
+  const movingCard = cards[fromIndex];
+  if (!movingCard) {
+    return;
+  }
+  if (toIndex >= cards.length) {
+    ensureSlots(toIndex + 1);
+  }
+  const targetCard = cards[toIndex] ?? null;
+  cards[toIndex] = movingCard;
+  cards[fromIndex] = targetCard;
+  trimTrailingEmptySlots();
   renderPagePreview();
   schedulePersist();
-  setStatus(`Moved card to position ${targetIndex + 1}.`);
+  setStatus(`Moved card to slot ${toIndex + 1}.`);
 }
 
 function renderPagePreview() {
   pagePreview.innerHTML = "";
   updateOversizeLock();
-  if (cards.length === 0) {
+  const totalCards = getCardCount();
+  if (totalCards === 0) {
     const empty = document.createElement("div");
     empty.className = "placeholder";
     empty.textContent = "No cards on the sheet yet.";
@@ -834,42 +871,47 @@ function renderPagePreview() {
       const cardIndex = pageIndex * perPage + slot;
       const slotWrap = document.createElement("div");
       slotWrap.className = "preview-slot";
-      if (cardIndex >= cards.length) {
-        slotWrap.classList.add("empty");
-        grid.appendChild(slotWrap);
-        continue;
-      }
+      slotWrap.dataset.index = cardIndex.toString();
 
       const cardItem = cards[cardIndex];
-      slotWrap.dataset.index = cardIndex.toString();
-      slotWrap.setAttribute("draggable", "true");
+      if (!cardItem) {
+        slotWrap.classList.add("empty");
+      }
 
-      const img = document.createElement("img");
-      img.src = cardItem.dataUrl;
-      img.alt = `Card preview ${cardIndex + 1}`;
+      if (cardItem) {
+        slotWrap.setAttribute("draggable", "true");
 
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "preview-remove";
-      button.textContent = "Remove";
-      button.draggable = false;
-      button.addEventListener("dragstart", (event) => event.preventDefault());
-      button.addEventListener("click", () => removeCard(cardIndex));
+        const img = document.createElement("img");
+        img.src = cardItem.dataUrl;
+        img.alt = `Card preview ${cardIndex + 1}`;
 
-      slotWrap.addEventListener("dragstart", (event) => {
-        event.dataTransfer?.setData("text/plain", cardIndex.toString());
-        event.dataTransfer?.setDragImage(slotWrap, 0, 0);
-        if (event.dataTransfer) {
-          event.dataTransfer.effectAllowed = "move";
-        }
-        slotWrap.classList.add("dragging");
-      });
-      slotWrap.addEventListener("dragend", () => {
-        slotWrap.classList.remove("dragging");
-        pagePreview
-          .querySelectorAll(".preview-slot.drag-over")
-          .forEach((slot) => slot.classList.remove("drag-over"));
-      });
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "preview-remove";
+        button.textContent = "Remove";
+        button.draggable = false;
+        button.addEventListener("dragstart", (event) => event.preventDefault());
+        button.addEventListener("click", () => removeCard(cardIndex));
+
+        slotWrap.addEventListener("dragstart", (event) => {
+          event.dataTransfer?.setData("text/plain", cardIndex.toString());
+          event.dataTransfer?.setDragImage(slotWrap, 0, 0);
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+          }
+          slotWrap.classList.add("dragging");
+        });
+        slotWrap.addEventListener("dragend", () => {
+          slotWrap.classList.remove("dragging");
+          pagePreview
+            .querySelectorAll(".preview-slot.drag-over")
+            .forEach((slot) => slot.classList.remove("drag-over"));
+        });
+
+        slotWrap.appendChild(img);
+        slotWrap.appendChild(button);
+      }
+
       slotWrap.addEventListener("dragover", (event) => {
         if (slotWrap.classList.contains("dragging")) {
           return;
@@ -888,11 +930,12 @@ function renderPagePreview() {
         slotWrap.classList.remove("drag-over");
         const fromIndex = Number(event.dataTransfer?.getData("text/plain"));
         const toIndex = Number(slotWrap.dataset.index);
+        if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
+          return;
+        }
         moveCard(fromIndex, toIndex);
       });
 
-      slotWrap.appendChild(img);
-      slotWrap.appendChild(button);
       grid.appendChild(slotWrap);
     }
 
@@ -964,7 +1007,8 @@ function mmToPt(mm) {
 }
 
 async function downloadPdf() {
-  if (cards.length === 0) {
+  const totalCards = getCardCount();
+  if (totalCards === 0) {
     setStatus("Add at least one card before downloading the PDF.");
     return;
   }
@@ -973,7 +1017,7 @@ async function downloadPdf() {
     return;
   }
 
-  const totalCards = cards.length;
+  const totalSlots = cards.length;
   isDownloading = true;
   setPdfBusy(true);
   setPdfProgress(true, 0, totalCards);
@@ -1002,7 +1046,8 @@ async function downloadPdf() {
     const perPage = layout.columns * layout.rows;
     let page = null;
 
-    for (let i = 0; i < cards.length; i += 1) {
+    let renderedCards = 0;
+    for (let i = 0; i < totalSlots; i += 1) {
       if (i % perPage === 0) {
         page = pdfDoc.addPage([pageWidth, pageHeight]);
       }
@@ -1014,12 +1059,17 @@ async function downloadPdf() {
       const x = margin + column * (labelWidth + gapX);
       const y = pageHeight - margin - labelHeight - row * (labelHeight + gapY);
 
-      const imageBytes = await fetch(cards[i].dataUrl).then((res) =>
+      const cardItem = cards[i];
+      if (!cardItem) {
+        continue;
+      }
+
+      const imageBytes = await fetch(cardItem.dataUrl).then((res) =>
         res.arrayBuffer(),
       );
       const isJpeg =
-        cards[i].dataUrl.startsWith("data:image/jpeg") ||
-        cards[i].dataUrl.startsWith("data:image/jpg");
+        cardItem.dataUrl.startsWith("data:image/jpeg") ||
+        cardItem.dataUrl.startsWith("data:image/jpg");
       const image = isJpeg
         ? await pdfDoc.embedJpg(imageBytes)
         : await pdfDoc.embedPng(imageBytes);
@@ -1030,9 +1080,9 @@ async function downloadPdf() {
         height: labelHeight,
       });
 
-      const progress = i + 1;
-      setPdfProgress(true, progress, totalCards);
-      setStatus(`Generating PDF... ${progress} of ${totalCards}`);
+      renderedCards += 1;
+      setPdfProgress(true, renderedCards, totalCards);
+      setStatus(`Generating PDF... ${renderedCards} of ${totalCards}`);
     }
 
     setStatus("Finalizing PDF...");
@@ -1139,9 +1189,12 @@ function applyPersistedState(saved) {
           id: card.id ?? Date.now().toString(16),
           dataUrl: card.dataUrl,
         });
+        return;
       }
+      cards.push(null);
     });
   }
+  trimTrailingEmptySlots();
   renderPagePreview();
 
   if (saved.image && typeof saved.image.dataUrl === "string") {
@@ -1154,7 +1207,7 @@ function applyPersistedState(saved) {
     drawCard();
   }
 
-  if (cards.length > 0 || saved.image?.dataUrl) {
+  if (getCardCount() > 0 || saved.image?.dataUrl) {
     setStatus("Restored your last session.");
   }
 
