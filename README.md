@@ -25,6 +25,12 @@ npm run preview
 
 ## Docker (production)
 
+```bash
+docker run -p 8080:80 ghcr.io/daniel-k/card-label-imager:latest
+```
+
+## Docker (development)
+
 Build the image:
 
 ```bash
