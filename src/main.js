@@ -221,19 +221,22 @@ function schedulePersist() {
   }, PERSIST_DEBOUNCE_MS);
 }
 
-function cacheImageSource(source) {
-  if (!(source instanceof Blob)) {
-    return;
+function captureSourceFromImage() {
+  if (!state.img) {
+    return null;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    if (typeof reader.result === "string") {
-      state.sourceDataUrl = reader.result;
-      schedulePersist();
-    }
-  };
-  reader.onerror = () => {};
-  reader.readAsDataURL(source);
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = state.img.width;
+  sourceCanvas.height = state.img.height;
+  const sourceCtx = sourceCanvas.getContext("2d");
+  if (!sourceCtx) {
+    return null;
+  }
+  sourceCtx.drawImage(state.img, 0, 0);
+  const dataUrl = sourceCanvas.toDataURL("image/png");
+  state.sourceDataUrl = dataUrl;
+  schedulePersist();
+  return dataUrl;
 }
 
 function roundedRectPath(context, x, y, width, height, radius) {
@@ -578,6 +581,9 @@ function loadImage(source, options = {}) {
   img.onload = () => {
     safeRevokeObjectUrl(imgSrc);
     state.img = img;
+    if (!state.sourceDataUrl) {
+      captureSourceFromImage();
+    }
     if (applyState) {
       applySavedImageState(applyState);
     } else {
@@ -599,9 +605,6 @@ function loadImage(source, options = {}) {
     }
   };
   img.src = imgSrc;
-  if (!isStringSource) {
-    cacheImageSource(source);
-  }
 }
 
 function handlePaste(event) {
@@ -815,8 +818,7 @@ function addToPage() {
   const cardItem = {
     id: cardId,
     dataUrl,
-    sourceDataUrl:
-      typeof state.sourceDataUrl === "string" ? state.sourceDataUrl : null,
+    sourceDataUrl: state.sourceDataUrl ?? captureSourceFromImage(),
     imageState: {
       baseScale: state.baseScale,
       zoom: state.zoom,
@@ -904,10 +906,11 @@ function editCard(index) {
     hasSource && cardItem.imageState && typeof cardItem.imageState === "object"
       ? cardItem.imageState
       : null;
+  const successMessage = `Editing card ${index + 1}. Adjust framing, then click Update card.`;
   setEditingCardId(cardItem.id);
   loadImage(source, {
     applyState,
-    successMessage: `Editing card ${index + 1}. Adjust framing, then click Update card.`,
+    successMessage,
     errorMessage: "Could not load that card for editing.",
   });
 }
