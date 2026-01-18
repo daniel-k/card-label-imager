@@ -2,7 +2,8 @@ FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
-COPY . .
+COPY vite.config.json .
+COPY src/ .
 RUN npm run build
 
 FROM nginx:1.27-alpine

@@ -396,16 +396,18 @@ button:disabled {
 .url-row {
     display: flex;
     gap: 10px;
-    align-items: center;
+    align-items: flex-start;
 }
 
-.url-row input[type="url"] {
+.url-row textarea {
     flex: 1;
     padding: 12px;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(31, 43, 42, 0.2);
     background: #fff;
     font-family: inherit;
+    min-height: 44px;
+    resize: vertical;
 }
 
 .url-row button {

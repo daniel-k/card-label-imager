@@ -575,35 +575,39 @@ function updateZoom(value) {
 
 function loadImage(source, options = {}) {
   const { successMessage, errorMessage, applyState, silent } = options;
-  const isStringSource = typeof source === "string";
-  state.sourceDataUrl = isStringSource ? source : null;
-  const img = new Image();
-  const imgSrc = isStringSource ? source : URL.createObjectURL(source);
-  img.onload = () => {
-    safeRevokeObjectUrl(imgSrc);
-    state.img = img;
-    captureSourceFromImage();
-    if (applyState) {
-      applySavedImageState(applyState);
-    } else {
-      resetView();
-    }
-    if (!silent) {
-      setStatus(
-        successMessage ??
-          "Drag or use the arrow keys to position it. Use + and - to zoom.",
-      );
-    }
-  };
-  img.onerror = () => {
-    safeRevokeObjectUrl(imgSrc);
-    if (!silent) {
-      setStatus(
-        errorMessage ?? "Could not load that image. Try another file or URL.",
-      );
-    }
-  };
-  img.src = imgSrc;
+  return new Promise((resolve) => {
+    const isStringSource = typeof source === "string";
+    state.sourceDataUrl = isStringSource ? source : null;
+    const img = new Image();
+    const imgSrc = isStringSource ? source : URL.createObjectURL(source);
+    img.onload = () => {
+      safeRevokeObjectUrl(imgSrc);
+      state.img = img;
+      captureSourceFromImage();
+      if (applyState) {
+        applySavedImageState(applyState);
+      } else {
+        resetView();
+      }
+      if (!silent) {
+        setStatus(
+          successMessage ??
+            "Drag or use the arrow keys to position it. Use + and - to zoom.",
+        );
+      }
+      resolve(true);
+    };
+    img.onerror = () => {
+      safeRevokeObjectUrl(imgSrc);
+      if (!silent) {
+        setStatus(
+          errorMessage ?? "Could not load that image. Try another file or URL.",
+        );
+      }
+      resolve(false);
+    };
+    img.src = imgSrc;
+  });
 }
 
 function handlePaste(event) {
@@ -637,41 +641,111 @@ function handlePaste(event) {
   });
 }
 
-async function loadImageFromUrl(rawUrl) {
+function parseUrlList(rawInput) {
+  if (!rawInput) {
+    return [];
+  }
+  return rawInput
+    .split(/\s+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+async function fetchImageBlob(rawUrl) {
   let resolvedUrl;
   try {
     resolvedUrl = new URL(rawUrl, window.location.href).toString();
   } catch (error) {
-    setStatus("Enter a valid image URL.");
-    return;
+    return { error: "Enter a valid image URL." };
   }
 
-  setStatus("Loading image from URL...");
   try {
     const response = await fetch(resolvedUrl);
     if (!response.ok) {
-      setStatus(`Could not fetch the image (HTTP ${response.status}).`);
-      return;
+      return {
+        error: `Could not fetch the image (HTTP ${response.status}).`,
+      };
     }
 
     const contentType = response.headers.get("content-type") || "";
     const blob = await response.blob();
     const blobType = blob.type || contentType;
     if (blobType && !blobType.startsWith("image/")) {
-      setStatus("That URL does not point to an image file.");
-      return;
+      return { error: "That URL does not point to an image file." };
+    }
+    return { blob };
+  } catch (error) {
+    return {
+      error:
+        "Could not load image from URL. Check the address and CORS settings.",
+    };
+  }
+}
+
+async function loadImageFromUrl(rawUrl) {
+  setStatus("Loading image from URL...");
+  const result = await fetchImageBlob(rawUrl);
+  if (!result?.blob) {
+    setStatus(
+      result?.error ??
+        "Could not load image from URL. Check the address and CORS settings.",
+    );
+    return false;
+  }
+
+  return loadImage(result.blob, {
+    successMessage:
+      "Image loaded from URL. Drag or use the arrow keys to position it. Use + and - to zoom.",
+    errorMessage: "Could not load that image. Try another URL.",
+  });
+}
+
+async function loadImagesFromUrlBatch(urls) {
+  if (!urls.length) {
+    return;
+  }
+  const addedIndices = [];
+  let failedCount = 0;
+
+  for (let i = 0; i < urls.length; i += 1) {
+    setStatus(`Loading ${i + 1} of ${urls.length} image URLs...`);
+    const result = await fetchImageBlob(urls[i]);
+    if (!result?.blob) {
+      failedCount += 1;
+      continue;
     }
 
-    loadImage(blob, {
-      successMessage:
-        "Image loaded from URL. Drag or use the arrow keys to position it. Use + and - to zoom.",
-      errorMessage: "Could not load that image. Try another URL.",
-    });
-  } catch (error) {
-    setStatus(
-      "Could not load image from URL. Check the address and CORS settings.",
-    );
+    const loaded = await loadImage(result.blob, { silent: true });
+    if (!loaded) {
+      failedCount += 1;
+      continue;
+    }
+
+    const cardItem = createCardItemFromState();
+    if (!cardItem) {
+      failedCount += 1;
+      continue;
+    }
+    const index = appendCardItem(cardItem);
+    addedIndices.push(index);
   }
+
+  if (addedIndices.length === 0) {
+    setStatus("Could not load any of those URLs.");
+    return;
+  }
+
+  renderPagePreview();
+  schedulePersist();
+  const addedCount = addedIndices.length;
+  const cardLabel = addedCount === 1 ? "card" : "cards";
+  const urlLabel = urls.length === 1 ? "URL" : "URLs";
+  const failureLine =
+    failedCount > 0
+      ? ` ${failedCount} of ${urls.length} ${urlLabel} failed.`
+      : "";
+  const successMessage = `Added ${addedCount} ${cardLabel} from ${urls.length} ${urlLabel}.${failureLine} Editing card ${addedIndices[0] + 1}. Adjust framing, then click Update card.`;
+  editCard(addedIndices[0], { successMessage });
 }
 
 function getPointerPosition(event) {
@@ -748,6 +822,49 @@ function handleKeyboardZoom(direction) {
   updateZoom(snapped);
 }
 
+function createCardItemFromState(cardId = null) {
+  if (!state.img) {
+    return null;
+  }
+  const previousBleedOverlay = showBleedOverlay;
+  const previousTrimGuide = showTrimGuide;
+  showBleedOverlay = false;
+  showTrimGuide = includeTrimInExport;
+  drawCard();
+  if (PDF_IMAGE_FORMAT === "image/jpeg") {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    ctx.fillStyle = PDF_IMAGE_BACKGROUND;
+    ctx.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
+    ctx.restore();
+  }
+  const dataUrl = canvas.toDataURL(PDF_IMAGE_FORMAT, PDF_IMAGE_QUALITY);
+  showBleedOverlay = previousBleedOverlay;
+  showTrimGuide = previousTrimGuide;
+  drawCard();
+  return {
+    id: cardId ?? Date.now().toString(16),
+    dataUrl,
+    sourceDataUrl: state.sourceDataUrl ?? captureSourceFromImage(),
+    imageState: {
+      baseScale: state.baseScale,
+      zoom: state.zoom,
+      offsetX: state.offsetX,
+      offsetY: state.offsetY,
+    },
+  };
+}
+
+function appendCardItem(cardItem) {
+  const emptySlotIndex = cards.findIndex((card) => !card);
+  if (emptySlotIndex === -1) {
+    cards.push(cardItem);
+    return cards.length - 1;
+  }
+  cards[emptySlotIndex] = cardItem;
+  return emptySlotIndex;
+}
+
 function onKeyDown(event) {
   if (!state.img || isEditableTarget(event.target)) {
     return;
@@ -797,43 +914,14 @@ function addToPage() {
     editingCardId !== null
       ? cards.findIndex((card) => card?.id === editingCardId)
       : -1;
-  const previousBleedOverlay = showBleedOverlay;
-  const previousTrimGuide = showTrimGuide;
-  showBleedOverlay = false;
-  showTrimGuide = includeTrimInExport;
-  drawCard();
-  if (PDF_IMAGE_FORMAT === "image/jpeg") {
-    ctx.save();
-    ctx.globalCompositeOperation = "destination-over";
-    ctx.fillStyle = PDF_IMAGE_BACKGROUND;
-    ctx.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
-    ctx.restore();
+  const cardItem = createCardItemFromState(editingCardId ?? null);
+  if (!cardItem) {
+    return;
   }
-  const dataUrl = canvas.toDataURL(PDF_IMAGE_FORMAT, PDF_IMAGE_QUALITY);
-  showBleedOverlay = previousBleedOverlay;
-  showTrimGuide = previousTrimGuide;
-  drawCard();
-  const cardId = editingCardId ?? Date.now().toString(16);
-  const cardItem = {
-    id: cardId,
-    dataUrl,
-    sourceDataUrl: state.sourceDataUrl ?? captureSourceFromImage(),
-    imageState: {
-      baseScale: state.baseScale,
-      zoom: state.zoom,
-      offsetX: state.offsetX,
-      offsetY: state.offsetY,
-    },
-  };
   if (editingIndex >= 0) {
     cards[editingIndex] = cardItem;
   } else {
-    const emptySlotIndex = cards.findIndex((card) => !card);
-    if (emptySlotIndex === -1) {
-      cards.push(cardItem);
-    } else {
-      cards[emptySlotIndex] = cardItem;
-    }
+    appendCardItem(cardItem);
   }
   renderPagePreview();
   schedulePersist();
@@ -891,7 +979,7 @@ function moveCard(fromIndex, toIndex) {
   setStatus(`Moved card to slot ${toIndex + 1}.`);
 }
 
-function editCard(index) {
+function editCard(index, options = {}) {
   if (!Number.isInteger(index) || index < 0 || index >= cards.length) {
     return;
   }
@@ -899,18 +987,22 @@ function editCard(index) {
   if (!cardItem) {
     return;
   }
+  const { successMessage, errorMessage } = options;
   const hasSource = typeof cardItem.sourceDataUrl === "string";
   const source = hasSource ? cardItem.sourceDataUrl : cardItem.dataUrl;
   const applyState =
     hasSource && cardItem.imageState && typeof cardItem.imageState === "object"
       ? cardItem.imageState
       : null;
-  const successMessage = `Editing card ${index + 1}. Adjust framing, then click Update card.`;
+  const successLabel =
+    successMessage ??
+    `Editing card ${index + 1}. Adjust framing, then click Update card.`;
+  const errorLabel = errorMessage ?? "Could not load that card for editing.";
   setEditingCardId(cardItem.id);
   loadImage(source, {
     applyState,
-    successMessage,
-    errorMessage: "Could not load that card for editing.",
+    successMessage: successLabel,
+    errorMessage: errorLabel,
   });
 }
 
@@ -1368,18 +1460,23 @@ canvas.addEventListener("pointerleave", onPointerUp);
 window.addEventListener("paste", handlePaste);
 window.addEventListener("keydown", onKeyDown);
 urlInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();
     loadUrlBtn.click();
   }
 });
 loadUrlBtn.addEventListener("click", () => {
-  const url = urlInput.value.trim();
-  if (!url) {
+  const raw = urlInput.value.trim();
+  if (!raw) {
     setStatus("Paste an image URL to load.");
     return;
   }
-  loadImageFromUrl(url);
+  const urls = parseUrlList(raw);
+  if (urls.length <= 1) {
+    loadImageFromUrl(urls[0]);
+    return;
+  }
+  loadImagesFromUrlBatch(urls);
 });
 
 addToPageBtn.addEventListener("click", addToPage);

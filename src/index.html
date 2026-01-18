@@ -91,13 +91,17 @@
                 <div class="control-block">
                     <label for="urlInput">Load from URL</label>
                     <div class="url-row">
-                        <input
-                            type="url"
+                        <textarea
                             id="urlInput"
+                            rows="2"
                             placeholder="https://example.com/image.jpg"
-                        />
+                        ></textarea>
                         <button id="loadUrl" class="ghost">Load</button>
                     </div>
+                    <p class="hint">
+                        Paste one or more URLs (one per line). Use Ctrl+Enter or
+                        Cmd+Enter to load.
+                    </p>
                 </div>
 
                 <div class="control-block">
