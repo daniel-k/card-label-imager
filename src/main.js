@@ -10,6 +10,9 @@ const scaleRange = document.getElementById("scaleRange");
 const scaleReadout = document.getElementById("scaleReadout");
 const addToPageBtn = document.getElementById("addToPage");
 const downloadPdfBtn = document.getElementById("downloadPdf");
+const downloadSetupBtn = document.getElementById("downloadSetup");
+const importSetupBtn = document.getElementById("importSetup");
+const importSetupInput = document.getElementById("importSetupInput");
 const clearPageBtn = document.getElementById("clearPage");
 const resetViewBtn = document.getElementById("resetView");
 const pagePreview = document.getElementById("pagePreview");
@@ -29,6 +32,9 @@ const KEYBOARD_ZOOM_STEP = 0.05;
 const PDF_IMAGE_FORMAT = "image/jpeg";
 const PDF_IMAGE_QUALITY = 0.82;
 const PDF_IMAGE_BACKGROUND = "#ffffff";
+const STORAGE_KEY = "card-label-imager-state";
+const STORAGE_VERSION = 1;
+const PERSIST_DEBOUNCE_MS = 300;
 
 const baseCard = {
   widthMm: 85.6,
@@ -69,11 +75,14 @@ const state = {
   dragStartY: 0,
   startOffsetX: 0,
   startOffsetY: 0,
+  sourceDataUrl: null,
 };
 
 const cards = [];
 const downloadPdfLabel = downloadPdfBtn?.textContent ?? "Download PDF";
 let isDownloading = false;
+let persistTimeout = null;
+let hasPersistError = false;
 
 function setStatus(message) {
   statusEl.textContent = message;
@@ -105,6 +114,81 @@ function setPdfProgress(visible, current = 0, total = 0) {
       ? `Generating PDF... ${current} of ${total}`
       : "Generating PDF...";
   pdfProgressMeta.textContent = label;
+}
+
+function safeRevokeObjectUrl(url) {
+  if (typeof url === "string" && url.startsWith("blob:")) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function buildPersistedState() {
+  return {
+    version: STORAGE_VERSION,
+    savedAt: new Date().toISOString(),
+    layout: {
+      oversizeMm: layout.oversizeMm,
+    },
+    settings: {
+      includeTrimInExport,
+    },
+    image:
+      state.img && state.sourceDataUrl
+        ? {
+            dataUrl: state.sourceDataUrl,
+            baseScale: state.baseScale,
+            zoom: state.zoom,
+            offsetX: state.offsetX,
+            offsetY: state.offsetY,
+          }
+        : null,
+    cards: cards
+      .map((card) => ({
+        id: card.id,
+        dataUrl: card.dataUrl,
+      }))
+      .filter((card) => typeof card.dataUrl === "string"),
+  };
+}
+
+function persistState() {
+  try {
+    const payload = JSON.stringify(buildPersistedState());
+    localStorage.setItem(STORAGE_KEY, payload);
+    hasPersistError = false;
+  } catch (error) {
+    if (!hasPersistError) {
+      setStatus(
+        "Could not save to local storage. Use Download setup for backups.",
+      );
+      hasPersistError = true;
+    }
+  }
+}
+
+function schedulePersist() {
+  if (persistTimeout) {
+    clearTimeout(persistTimeout);
+  }
+  persistTimeout = setTimeout(() => {
+    persistTimeout = null;
+    persistState();
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+function cacheImageSource(source) {
+  if (!(source instanceof Blob)) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === "string") {
+      state.sourceDataUrl = reader.result;
+      schedulePersist();
+    }
+  };
+  reader.onerror = () => {};
+  reader.readAsDataURL(source);
 }
 
 function roundedRectPath(context, x, y, width, height, radius) {
@@ -356,10 +440,38 @@ function resetView() {
   scaleRange.value = "1";
   scaleReadout.textContent = "100%";
   drawCard();
+  schedulePersist();
+}
+
+function applySavedImageState(saved) {
+  if (!state.img || !saved) {
+    return;
+  }
+  const baseScale = Number(saved.baseScale);
+  if (!Number.isFinite(baseScale) || baseScale <= 0) {
+    resetView();
+    return;
+  }
+  const { min, max } = getScaleBounds();
+  state.baseScale = baseScale;
+  const zoomValue = Number(saved.zoom);
+  const zoom = Number.isFinite(zoomValue) ? zoomValue : 1;
+  state.zoom = clampOffset(zoom, min, max);
+  const offsetX = Number(saved.offsetX);
+  const offsetY = Number(saved.offsetY);
+  state.offsetX = Number.isFinite(offsetX) ? offsetX : 0;
+  state.offsetY = Number.isFinite(offsetY) ? offsetY : 0;
+  clampOffsets();
+  const step = getScaleStep();
+  const decimals = getStepDecimals(step);
+  scaleRange.value = state.zoom.toFixed(decimals);
+  scaleReadout.textContent = `${Math.round(state.zoom * 100)}%`;
+  drawCard();
+  schedulePersist();
 }
 
 function applyOversize(value, options = {}) {
-  const { announce = false } = options;
+  const { announce = false, clearCards = true, persist = true } = options;
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
     return;
@@ -369,7 +481,7 @@ function applyOversize(value, options = {}) {
     oversizeInput.value = layout.oversizeMm.toString();
   }
   const hadCards = cards.length > 0;
-  if (hadCards) {
+  if (hadCards && clearCards) {
     cards.length = 0;
     renderPagePreview();
   }
@@ -378,6 +490,9 @@ function applyOversize(value, options = {}) {
     resetView();
   } else {
     drawCard();
+  }
+  if (persist) {
+    schedulePersist();
   }
   if (announce) {
     if (hadCards && state.img) {
@@ -405,27 +520,42 @@ function updateZoom(value) {
   scaleReadout.textContent = `${Math.round(state.zoom * 100)}%`;
   clampOffsets();
   drawCard();
+  schedulePersist();
 }
 
 function loadImage(source, options = {}) {
-  const { successMessage, errorMessage } = options;
+  const { successMessage, errorMessage, applyState, silent } = options;
+  const isStringSource = typeof source === "string";
+  state.sourceDataUrl = isStringSource ? source : null;
   const img = new Image();
+  const imgSrc = isStringSource ? source : URL.createObjectURL(source);
   img.onload = () => {
-    URL.revokeObjectURL(img.src);
+    safeRevokeObjectUrl(imgSrc);
     state.img = img;
-    resetView();
-    setStatus(
-      successMessage ??
-        "Drag or use the arrow keys to position it. Use + and - to zoom.",
-    );
+    if (applyState) {
+      applySavedImageState(applyState);
+    } else {
+      resetView();
+    }
+    if (!silent) {
+      setStatus(
+        successMessage ??
+          "Drag or use the arrow keys to position it. Use + and - to zoom.",
+      );
+    }
   };
   img.onerror = () => {
-    URL.revokeObjectURL(img.src);
-    setStatus(
-      errorMessage ?? "Could not load that image. Try another file or URL.",
-    );
+    safeRevokeObjectUrl(imgSrc);
+    if (!silent) {
+      setStatus(
+        errorMessage ?? "Could not load that image. Try another file or URL.",
+      );
+    }
   };
-  img.src = URL.createObjectURL(source);
+  img.src = imgSrc;
+  if (!isStringSource) {
+    cacheImageSource(source);
+  }
 }
 
 function handlePaste(event) {
@@ -536,6 +666,7 @@ function onPointerUp(event) {
   }
   state.dragging = false;
   canvas.releasePointerCapture(event.pointerId);
+  schedulePersist();
 }
 
 function isEditableTarget(target) {
@@ -556,6 +687,7 @@ function handleKeyboardMove(deltaX, deltaY) {
   state.offsetY += deltaY;
   clampOffsets();
   drawCard();
+  schedulePersist();
 }
 
 function handleKeyboardZoom(direction) {
@@ -634,6 +766,7 @@ function addToPage() {
     dataUrl,
   });
   renderPagePreview();
+  schedulePersist();
   setStatus(
     `Added ${cards.length} card${cards.length === 1 ? "" : "s"} to the sheet.`,
   );
@@ -642,6 +775,7 @@ function addToPage() {
 function removeCard(index) {
   cards.splice(index, 1);
   renderPagePreview();
+  schedulePersist();
   if (cards.length === 0) {
     setStatus("Sheet cleared. Add a new card when ready.");
   }
@@ -680,6 +814,7 @@ function renderPagePreview() {
 function clearPage() {
   cards.length = 0;
   renderPagePreview();
+  schedulePersist();
   setStatus("Sheet cleared.");
 }
 
@@ -779,6 +914,112 @@ async function downloadPdf() {
   }
 }
 
+function downloadSetup() {
+  const payload = JSON.stringify(buildPersistedState(), null, 2);
+  const blob = new Blob([payload], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `card-label-setup-${stamp}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus("Setup downloaded.");
+}
+
+function importSetup(file) {
+  if (!file) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const contents = typeof reader.result === "string" ? reader.result : "";
+    const parsed = parsePersistedState(contents);
+    if (!parsed) {
+      setStatus("That file does not contain a valid setup export.");
+      return;
+    }
+    applyPersistedState(parsed);
+    schedulePersist();
+    setStatus("Setup imported.");
+  };
+  reader.onerror = () => {
+    setStatus("Could not read that setup file.");
+  };
+  reader.readAsText(file);
+}
+
+function parsePersistedState(raw) {
+  try {
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    if (parsed.version && Number(parsed.version) !== Number(STORAGE_VERSION)) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+}
+
+function loadPersistedState() {
+  return parsePersistedState(localStorage.getItem(STORAGE_KEY));
+}
+
+function applyPersistedState(saved) {
+  if (!saved) {
+    return false;
+  }
+
+  const savedOversize = Number(saved.layout?.oversizeMm);
+  if (Number.isFinite(savedOversize)) {
+    applyOversize(savedOversize, {
+      announce: false,
+      clearCards: false,
+      persist: false,
+    });
+  }
+
+  if (typeof saved.settings?.includeTrimInExport === "boolean") {
+    includeTrimInExport = saved.settings.includeTrimInExport;
+    updateTrimLineToggle();
+  }
+
+  cards.length = 0;
+  if (Array.isArray(saved.cards)) {
+    saved.cards.forEach((card) => {
+      if (card && typeof card.dataUrl === "string") {
+        cards.push({
+          id: card.id ?? Date.now().toString(16),
+          dataUrl: card.dataUrl,
+        });
+      }
+    });
+  }
+  renderPagePreview();
+
+  if (saved.image && typeof saved.image.dataUrl === "string") {
+    drawCard();
+    loadImage(saved.image.dataUrl, {
+      applyState: saved.image,
+      silent: true,
+    });
+  } else {
+    drawCard();
+  }
+
+  if (cards.length > 0 || saved.image?.dataUrl) {
+    setStatus("Restored your last session.");
+  }
+
+  return true;
+}
+
 if (oversizeInput) {
   const startingOversize = Number(oversizeInput.value);
   if (Number.isFinite(startingOversize)) {
@@ -787,6 +1028,7 @@ if (oversizeInput) {
 }
 updateRenderMetrics();
 updateTrimLineToggle();
+const restoredState = applyPersistedState(loadPersistedState());
 
 imageInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
@@ -813,6 +1055,7 @@ if (toggleTrimLineBtn) {
     setStatus(
       `Trim line in PDF ${includeTrimInExport ? "enabled" : "disabled"}.`,
     );
+    schedulePersist();
   });
 }
 
@@ -841,6 +1084,24 @@ addToPageBtn.addEventListener("click", addToPage);
 clearPageBtn.addEventListener("click", clearPage);
 resetViewBtn.addEventListener("click", resetView);
 downloadPdfBtn.addEventListener("click", downloadPdf);
+if (downloadSetupBtn) {
+  downloadSetupBtn.addEventListener("click", downloadSetup);
+}
+if (importSetupBtn && importSetupInput) {
+  importSetupBtn.addEventListener("click", () => {
+    importSetupInput.click();
+  });
+  importSetupInput.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      importSetup(file);
+    }
+    event.target.value = "";
+  });
+}
+window.addEventListener("beforeunload", persistState);
 
-renderPagePreview();
-drawCard();
+if (!restoredState) {
+  renderPagePreview();
+  drawCard();
+}
