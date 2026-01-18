@@ -235,6 +235,18 @@ button:disabled {
     background: rgba(255, 255, 255, 0.7);
 }
 
+.setup-actions {
+    margin-top: 16px;
+    display: grid;
+    gap: 10px;
+}
+
+.setup-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
 .placeholder {
     font-size: 0.9rem;
     color: var(--muted);
