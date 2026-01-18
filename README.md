@@ -8,6 +8,13 @@ the cards as well.
 
 ![App screenshot](screenshot.png)
 
+Note: This tool runs entirely in the browser and does not require a backend.
+
+## Download release
+
+The quickest way to run it is to download the rendered HTML file from the
+[latest release](https://github.com/daniel-k/card-label-imager/releases/latest)
+and open it in your browser.
 
 ## Run locally
 
