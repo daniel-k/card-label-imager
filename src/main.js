@@ -783,6 +783,27 @@ function removeCard(index) {
   }
 }
 
+function moveCard(fromIndex, toIndex) {
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
+    return;
+  }
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= cards.length ||
+    toIndex >= cards.length ||
+    fromIndex === toIndex
+  ) {
+    return;
+  }
+  const [moved] = cards.splice(fromIndex, 1);
+  const targetIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+  cards.splice(targetIndex, 0, moved);
+  renderPagePreview();
+  schedulePersist();
+  setStatus(`Moved card to position ${targetIndex + 1}.`);
+}
+
 function renderPagePreview() {
   pagePreview.innerHTML = "";
   updateOversizeLock();
@@ -820,6 +841,9 @@ function renderPagePreview() {
       }
 
       const cardItem = cards[cardIndex];
+      slotWrap.dataset.index = cardIndex.toString();
+      slotWrap.setAttribute("draggable", "true");
+
       const img = document.createElement("img");
       img.src = cardItem.dataUrl;
       img.alt = `Card preview ${cardIndex + 1}`;
@@ -828,7 +852,44 @@ function renderPagePreview() {
       button.type = "button";
       button.className = "preview-remove";
       button.textContent = "Remove";
+      button.draggable = false;
+      button.addEventListener("dragstart", (event) => event.preventDefault());
       button.addEventListener("click", () => removeCard(cardIndex));
+
+      slotWrap.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/plain", cardIndex.toString());
+        event.dataTransfer?.setDragImage(slotWrap, 0, 0);
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+        }
+        slotWrap.classList.add("dragging");
+      });
+      slotWrap.addEventListener("dragend", () => {
+        slotWrap.classList.remove("dragging");
+        pagePreview
+          .querySelectorAll(".preview-slot.drag-over")
+          .forEach((slot) => slot.classList.remove("drag-over"));
+      });
+      slotWrap.addEventListener("dragover", (event) => {
+        if (slotWrap.classList.contains("dragging")) {
+          return;
+        }
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        slotWrap.classList.add("drag-over");
+      });
+      slotWrap.addEventListener("dragleave", () => {
+        slotWrap.classList.remove("drag-over");
+      });
+      slotWrap.addEventListener("drop", (event) => {
+        event.preventDefault();
+        slotWrap.classList.remove("drag-over");
+        const fromIndex = Number(event.dataTransfer?.getData("text/plain"));
+        const toIndex = Number(slotWrap.dataset.index);
+        moveCard(fromIndex, toIndex);
+      });
 
       slotWrap.appendChild(img);
       slotWrap.appendChild(button);

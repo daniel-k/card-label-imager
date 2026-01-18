@@ -289,11 +289,13 @@ button:disabled {
     overflow: hidden;
     border: 1px dashed rgba(31, 43, 42, 0.2);
     background: rgba(241, 231, 216, 0.45);
+    cursor: grab;
 }
 
 .preview-slot.empty {
     background: rgba(241, 231, 216, 0.2);
     border-style: dashed;
+    cursor: default;
 }
 
 .preview-slot img {
@@ -301,6 +303,16 @@ button:disabled {
     height: 100%;
     object-fit: cover;
     display: block;
+}
+
+.preview-slot.drag-over {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 2px rgba(228, 111, 58, 0.3);
+}
+
+.preview-slot.dragging {
+    opacity: 0.6;
+    cursor: grabbing;
 }
 
 .preview-remove {
