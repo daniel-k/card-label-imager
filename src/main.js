@@ -574,7 +574,8 @@ function updateZoom(value) {
 }
 
 function loadImage(source, options = {}) {
-  const { successMessage, errorMessage, applyState, silent } = options;
+  const { successMessage, errorMessage, applyState, silent, clearEditing } =
+    options;
   return new Promise((resolve) => {
     const isStringSource = typeof source === "string";
     state.sourceDataUrl = isStringSource ? source : null;
@@ -588,6 +589,9 @@ function loadImage(source, options = {}) {
         applySavedImageState(applyState);
       } else {
         resetView();
+      }
+      if (clearEditing) {
+        setEditingCardId(null);
       }
       if (!silent) {
         setStatus(
@@ -638,6 +642,7 @@ function handlePaste(event) {
   loadImage(file, {
     successMessage:
       "Image pasted from clipboard. Drag or use the arrow keys to position it. Use + and - to zoom.",
+    clearEditing: true,
   });
 }
 
@@ -697,6 +702,7 @@ async function loadImageFromUrl(rawUrl) {
     successMessage:
       "Image loaded from URL. Drag or use the arrow keys to position it. Use + and - to zoom.",
     errorMessage: "Could not load that image. Try another URL.",
+    clearEditing: true,
   });
 }
 
@@ -715,7 +721,10 @@ async function loadImagesFromUrlBatch(urls) {
       continue;
     }
 
-    const loaded = await loadImage(result.blob, { silent: true });
+    const loaded = await loadImage(result.blob, {
+      silent: true,
+      clearEditing: true,
+    });
     if (!loaded) {
       failedCount += 1;
       continue;
@@ -933,7 +942,6 @@ function addToPage() {
       `Added ${totalCards} card${totalCards === 1 ? "" : "s"} to the sheet.`,
     );
   }
-  setEditingCardId(null);
 }
 
 function removeCard(index) {
@@ -1427,7 +1435,7 @@ const restoredState = applyPersistedState(loadPersistedState());
 imageInput.addEventListener("change", (event) => {
   const file = event.target.files?.[0];
   if (file) {
-    loadImage(file);
+    loadImage(file, { clearEditing: true });
   }
   event.target.value = "";
 });
