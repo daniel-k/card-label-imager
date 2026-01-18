@@ -88,6 +88,7 @@ let persistTimeout = null;
 let hasPersistError = false;
 let previewResizeTimeout = null;
 let editingCardId = null;
+let trimLineRefreshToken = 0;
 
 function getCardCount() {
   return cards.reduce((count, card) => count + (card ? 1 : 0), 0);
@@ -326,9 +327,13 @@ function getTrimRect() {
 }
 
 function clipToLabel() {
+  clipContextToLabel(ctx);
+}
+
+function clipContextToLabel(context) {
   if (render.oversizePx === 0) {
     roundedRectPath(
-      ctx,
+      context,
       0,
       0,
       render.labelWidthPx,
@@ -336,10 +341,10 @@ function clipToLabel() {
       render.cardRadiusPx,
     );
   } else {
-    ctx.beginPath();
-    ctx.rect(0, 0, render.labelWidthPx, render.labelHeightPx);
+    context.beginPath();
+    context.rect(0, 0, render.labelWidthPx, render.labelHeightPx);
   }
-  ctx.clip();
+  context.clip();
 }
 
 function drawBleedOverlay() {
@@ -360,13 +365,24 @@ function drawTrimGuide() {
   if (!showTrimGuide) {
     return;
   }
+  drawTrimLine(ctx);
+}
+
+function drawTrimLine(context) {
   const trim = getTrimRect();
-  ctx.save();
-  ctx.strokeStyle = "rgba(42, 106, 115, 0.6)";
-  ctx.lineWidth = 3;
-  roundedRectPath(ctx, trim.x, trim.y, trim.width, trim.height, trim.radius);
-  ctx.stroke();
-  ctx.restore();
+  context.save();
+  context.strokeStyle = "rgba(42, 106, 115, 0.6)";
+  context.lineWidth = 3;
+  roundedRectPath(
+    context,
+    trim.x,
+    trim.y,
+    trim.width,
+    trim.height,
+    trim.radius,
+  );
+  context.stroke();
+  context.restore();
 }
 
 function drawPlaceholder() {
@@ -862,6 +878,120 @@ function createCardItemFromState(cardId = null) {
       offsetY: state.offsetY,
     },
   };
+}
+
+function normalizeCardImageState(imageState) {
+  const baseScale = Number(imageState?.baseScale);
+  const zoom = Number(imageState?.zoom);
+  const offsetX = Number(imageState?.offsetX);
+  const offsetY = Number(imageState?.offsetY);
+  return {
+    baseScale: Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1,
+    zoom: Number.isFinite(zoom) ? zoom : 1,
+    offsetX: Number.isFinite(offsetX) ? offsetX : 0,
+    offsetY: Number.isFinite(offsetY) ? offsetY : 0,
+  };
+}
+
+function drawCardToContext(context, img, imageState, includeTrimLine) {
+  context.clearRect(0, 0, render.labelWidthPx, render.labelHeightPx);
+  context.save();
+  clipContextToLabel(context);
+  const scale = imageState.baseScale * imageState.zoom;
+  const imageWidth = img.width * scale;
+  const imageHeight = img.height * scale;
+  const x = render.labelWidthPx / 2 - imageWidth / 2 + imageState.offsetX;
+  const y = render.labelHeightPx / 2 - imageHeight / 2 + imageState.offsetY;
+  context.drawImage(img, x, y, imageWidth, imageHeight);
+  context.restore();
+
+  if (includeTrimLine) {
+    drawTrimLine(context);
+  }
+
+  if (PDF_IMAGE_FORMAT === "image/jpeg") {
+    context.save();
+    context.globalCompositeOperation = "destination-over";
+    context.fillStyle = PDF_IMAGE_BACKGROUND;
+    context.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
+    context.restore();
+  }
+}
+
+function loadImageElement(source) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = source;
+  });
+}
+
+async function rebuildCardDataUrl(
+  cardItem,
+  includeTrimLine,
+  renderCanvas,
+  renderContext,
+) {
+  if (!cardItem || !renderContext) {
+    return null;
+  }
+  const source = cardItem.sourceDataUrl || cardItem.dataUrl;
+  if (!source) {
+    return null;
+  }
+  const img = await loadImageElement(source);
+  if (!img) {
+    return null;
+  }
+  const imageState = normalizeCardImageState(cardItem.imageState);
+  drawCardToContext(renderContext, img, imageState, includeTrimLine);
+  return renderCanvas.toDataURL(PDF_IMAGE_FORMAT, PDF_IMAGE_QUALITY);
+}
+
+async function refreshTrimLinePreviews() {
+  if (cards.length === 0) {
+    return;
+  }
+  const refreshToken = (trimLineRefreshToken += 1);
+  const includeTrimLine = includeTrimInExport;
+  const renderCanvas = document.createElement("canvas");
+  renderCanvas.width = render.labelWidthPx;
+  renderCanvas.height = render.labelHeightPx;
+  const renderContext = renderCanvas.getContext("2d");
+  if (!renderContext) {
+    return;
+  }
+  let updated = false;
+  for (let i = 0; i < cards.length; i += 1) {
+    if (refreshToken !== trimLineRefreshToken) {
+      return;
+    }
+    const cardItem = cards[i];
+    if (!cardItem) {
+      continue;
+    }
+    const dataUrl = await rebuildCardDataUrl(
+      cardItem,
+      includeTrimLine,
+      renderCanvas,
+      renderContext,
+    );
+    if (refreshToken !== trimLineRefreshToken) {
+      return;
+    }
+    if (dataUrl) {
+      cardItem.dataUrl = dataUrl;
+      updated = true;
+    }
+  }
+  if (refreshToken !== trimLineRefreshToken) {
+    return;
+  }
+  if (updated) {
+    renderPagePreview();
+    schedulePersist();
+  }
 }
 
 function appendCardItem(cardItem) {
@@ -1457,6 +1587,7 @@ if (toggleTrimLineBtn) {
     setStatus(
       `Trim line in PDF ${includeTrimInExport ? "enabled" : "disabled"}.`,
     );
+    refreshTrimLinePreviews();
     schedulePersist();
   });
 }
