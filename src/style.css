@@ -315,15 +315,29 @@ button:disabled {
     cursor: grabbing;
 }
 
-.preview-remove {
+.preview-actions {
     position: absolute;
     top: 6px;
     right: 6px;
+    display: flex;
+    gap: 6px;
+    z-index: 1;
+}
+
+.preview-action {
     padding: 4px 10px;
     font-size: 0.7rem;
     background: rgba(31, 43, 42, 0.8);
     color: #fff;
     border-radius: 999px;
+}
+
+.preview-edit {
+    background: rgba(31, 43, 42, 0.78);
+}
+
+.preview-remove {
+    background: rgba(159, 55, 55, 0.9);
 }
 
 .controls {

@@ -80,11 +80,13 @@ const state = {
 };
 
 const cards = [];
+const addToPageLabel = addToPageBtn?.textContent ?? "Add to page";
 const downloadPdfLabel = downloadPdfBtn?.textContent ?? "Download PDF";
 let isDownloading = false;
 let persistTimeout = null;
 let hasPersistError = false;
 let previewResizeTimeout = null;
+let editingCardId = null;
 
 function getCardCount() {
   return cards.reduce((count, card) => count + (card ? 1 : 0), 0);
@@ -106,6 +108,14 @@ function ensureSlots(totalSlots) {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function setEditingCardId(cardId) {
+  editingCardId = cardId;
+  if (!addToPageBtn) {
+    return;
+  }
+  addToPageBtn.textContent = cardId ? "Update card" : addToPageLabel;
 }
 
 function setPdfBusy(isBusy) {
@@ -167,6 +177,19 @@ function buildPersistedState() {
         ? {
             id: card.id,
             dataUrl: card.dataUrl,
+            sourceDataUrl:
+              typeof card.sourceDataUrl === "string"
+                ? card.sourceDataUrl
+                : null,
+            imageState:
+              card.imageState && typeof card.imageState === "object"
+                ? {
+                    baseScale: card.imageState.baseScale,
+                    zoom: card.imageState.zoom,
+                    offsetX: card.imageState.offsetX,
+                    offsetY: card.imageState.offsetY,
+                  }
+                : null,
           }
         : null,
     ),
@@ -505,6 +528,7 @@ function applyOversize(value, options = {}) {
   const hadCards = getCardCount() > 0;
   if (hadCards && clearCards) {
     cards.length = 0;
+    setEditingCardId(null);
     renderPagePreview();
   }
   updateRenderMetrics();
@@ -767,6 +791,10 @@ function addToPage() {
     );
     return;
   }
+  const editingIndex =
+    editingCardId !== null
+      ? cards.findIndex((card) => card?.id === editingCardId)
+      : -1;
   const previousBleedOverlay = showBleedOverlay;
   const previousTrimGuide = showTrimGuide;
   showBleedOverlay = false;
@@ -783,30 +811,52 @@ function addToPage() {
   showBleedOverlay = previousBleedOverlay;
   showTrimGuide = previousTrimGuide;
   drawCard();
+  const cardId = editingCardId ?? Date.now().toString(16);
   const cardItem = {
-    id: Date.now().toString(16),
+    id: cardId,
     dataUrl,
+    sourceDataUrl:
+      typeof state.sourceDataUrl === "string" ? state.sourceDataUrl : null,
+    imageState: {
+      baseScale: state.baseScale,
+      zoom: state.zoom,
+      offsetX: state.offsetX,
+      offsetY: state.offsetY,
+    },
   };
-  const emptySlotIndex = cards.findIndex((card) => !card);
-  if (emptySlotIndex === -1) {
-    cards.push(cardItem);
+  if (editingIndex >= 0) {
+    cards[editingIndex] = cardItem;
   } else {
-    cards[emptySlotIndex] = cardItem;
+    const emptySlotIndex = cards.findIndex((card) => !card);
+    if (emptySlotIndex === -1) {
+      cards.push(cardItem);
+    } else {
+      cards[emptySlotIndex] = cardItem;
+    }
   }
   renderPagePreview();
   schedulePersist();
-  const totalCards = getCardCount();
-  setStatus(
-    `Added ${totalCards} card${totalCards === 1 ? "" : "s"} to the sheet.`,
-  );
+  if (editingIndex >= 0) {
+    setStatus(`Updated card in slot ${editingIndex + 1}.`);
+  } else {
+    const totalCards = getCardCount();
+    setStatus(
+      `Added ${totalCards} card${totalCards === 1 ? "" : "s"} to the sheet.`,
+    );
+  }
+  setEditingCardId(null);
 }
 
 function removeCard(index) {
   if (!Number.isInteger(index) || index < 0 || index >= cards.length) {
     return;
   }
-  if (!cards[index]) {
+  const cardItem = cards[index];
+  if (!cardItem) {
     return;
+  }
+  if (cardItem.id === editingCardId) {
+    setEditingCardId(null);
   }
   cards[index] = null;
   trimTrailingEmptySlots();
@@ -838,6 +888,28 @@ function moveCard(fromIndex, toIndex) {
   renderPagePreview();
   schedulePersist();
   setStatus(`Moved card to slot ${toIndex + 1}.`);
+}
+
+function editCard(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= cards.length) {
+    return;
+  }
+  const cardItem = cards[index];
+  if (!cardItem) {
+    return;
+  }
+  const hasSource = typeof cardItem.sourceDataUrl === "string";
+  const source = hasSource ? cardItem.sourceDataUrl : cardItem.dataUrl;
+  const applyState =
+    hasSource && cardItem.imageState && typeof cardItem.imageState === "object"
+      ? cardItem.imageState
+      : null;
+  setEditingCardId(cardItem.id);
+  loadImage(source, {
+    applyState,
+    successMessage: `Editing card ${index + 1}. Adjust framing, then click Update card.`,
+    errorMessage: "Could not load that card for editing.",
+  });
 }
 
 function renderPagePreview() {
@@ -885,9 +957,20 @@ function renderPagePreview() {
         img.src = cardItem.dataUrl;
         img.alt = `Card preview ${cardIndex + 1}`;
 
+        const actions = document.createElement("div");
+        actions.className = "preview-actions";
+
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "preview-edit preview-action";
+        edit.textContent = "Edit";
+        edit.draggable = false;
+        edit.addEventListener("dragstart", (event) => event.preventDefault());
+        edit.addEventListener("click", () => editCard(cardIndex));
+
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "preview-remove";
+        button.className = "preview-remove preview-action";
         button.textContent = "Remove";
         button.draggable = false;
         button.addEventListener("dragstart", (event) => event.preventDefault());
@@ -908,8 +991,10 @@ function renderPagePreview() {
             .forEach((slot) => slot.classList.remove("drag-over"));
         });
 
+        actions.appendChild(edit);
+        actions.appendChild(button);
         slotWrap.appendChild(img);
-        slotWrap.appendChild(button);
+        slotWrap.appendChild(actions);
       }
 
       slotWrap.addEventListener("dragover", (event) => {
@@ -1005,6 +1090,7 @@ function schedulePreviewSizing() {
 
 function clearPage() {
   cards.length = 0;
+  setEditingCardId(null);
   renderPagePreview();
   schedulePersist();
   setStatus("Sheet cleared.");
@@ -1174,6 +1260,7 @@ function applyPersistedState(saved) {
   if (!saved) {
     return false;
   }
+  setEditingCardId(null);
 
   const savedOversize = Number(saved.layout?.oversizeMm);
   if (Number.isFinite(savedOversize)) {
@@ -1196,6 +1283,17 @@ function applyPersistedState(saved) {
         cards.push({
           id: card.id ?? Date.now().toString(16),
           dataUrl: card.dataUrl,
+          sourceDataUrl:
+            typeof card.sourceDataUrl === "string" ? card.sourceDataUrl : null,
+          imageState:
+            card.imageState && typeof card.imageState === "object"
+              ? {
+                  baseScale: card.imageState.baseScale,
+                  zoom: card.imageState.zoom,
+                  offsetX: card.imageState.offsetX,
+                  offsetY: card.imageState.offsetY,
+                }
+              : null,
         });
         return;
       }
