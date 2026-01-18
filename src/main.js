@@ -278,7 +278,7 @@ function updateLayoutMeta() {
 function updateTrimLineToggle() {
   const label = includeTrimInExport ? "On" : "Off";
   if (toggleTrimLineBtn) {
-    toggleTrimLineBtn.textContent = `Trim line in PDF: ${label}`;
+    toggleTrimLineBtn.textContent = `Trim line: ${label}`;
     toggleTrimLineBtn.setAttribute(
       "aria-pressed",
       includeTrimInExport.toString(),
