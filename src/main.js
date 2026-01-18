@@ -26,7 +26,7 @@ const trimLineMeta = document.getElementById("trimLineMeta");
 const PX_PER_MM = 10;
 const KEYBOARD_MOVE_STEP = 12;
 const KEYBOARD_ZOOM_STEP = 0.05;
-const PDF_IMAGE_FORMAT = "image/jpeg";
+const PDF_IMAGE_FORMAT = "image/png";
 const PDF_IMAGE_QUALITY = 0.82;
 const PDF_IMAGE_BACKGROUND = "#ffffff";
 
@@ -262,8 +262,6 @@ function drawCard() {
 
   ctx.save();
   clipToLabel();
-  ctx.fillStyle = "#f7f1e6";
-  ctx.fillRect(0, 0, render.labelWidthPx, render.labelHeightPx);
 
   const scale = state.baseScale * state.zoom;
   const imageWidth = state.img.width * scale;
