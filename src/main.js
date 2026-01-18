@@ -32,6 +32,7 @@ const KEYBOARD_ZOOM_STEP = 0.05;
 const PDF_IMAGE_FORMAT = "image/jpeg";
 const PDF_IMAGE_QUALITY = 0.82;
 const PDF_IMAGE_BACKGROUND = "#ffffff";
+const SOURCE_IMAGE_QUALITY = 0.92;
 const STORAGE_KEY = "card-label-imager-state";
 const STORAGE_VERSION = 1;
 const PERSIST_DEBOUNCE_MS = 300;
@@ -233,7 +234,7 @@ function captureSourceFromImage() {
     return null;
   }
   sourceCtx.drawImage(state.img, 0, 0);
-  const dataUrl = sourceCanvas.toDataURL("image/png");
+  const dataUrl = sourceCanvas.toDataURL("image/jpeg", SOURCE_IMAGE_QUALITY);
   state.sourceDataUrl = dataUrl;
   schedulePersist();
   return dataUrl;
@@ -581,9 +582,7 @@ function loadImage(source, options = {}) {
   img.onload = () => {
     safeRevokeObjectUrl(imgSrc);
     state.img = img;
-    if (!state.sourceDataUrl) {
-      captureSourceFromImage();
-    }
+    captureSourceFromImage();
     if (applyState) {
       applySavedImageState(applyState);
     } else {
