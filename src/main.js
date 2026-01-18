@@ -26,7 +26,7 @@ const trimLineMeta = document.getElementById("trimLineMeta");
 const PX_PER_MM = 10;
 const KEYBOARD_MOVE_STEP = 12;
 const KEYBOARD_ZOOM_STEP = 0.05;
-const PDF_IMAGE_FORMAT = "image/png";
+const PDF_IMAGE_FORMAT = "image/jpeg";
 const PDF_IMAGE_QUALITY = 0.82;
 const PDF_IMAGE_BACKGROUND = "#ffffff";
 
