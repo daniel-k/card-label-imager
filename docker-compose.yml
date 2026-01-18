@@ -1,5 +1,6 @@
 services:
   card-image:
+    image: ghcr.io/daniel-k/card-label-imager:latest
     build: .
     ports:
       - "8080:80"
