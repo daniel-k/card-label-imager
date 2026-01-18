@@ -952,6 +952,10 @@ function updatePreviewSizing() {
   }
   const labelSize = getLabelSizeMm();
   const pages = pagePreview.querySelectorAll(".preview-page");
+  if (pages.length === 0) {
+    return;
+  }
+  let needsRetry = false;
   pages.forEach((page) => {
     const grid = page.querySelector(".preview-grid");
     if (!grid) {
@@ -960,6 +964,7 @@ function updatePreviewSizing() {
     const pageWidth = page.clientWidth;
     const pageHeight = page.clientHeight;
     if (!pageWidth || !pageHeight) {
+      needsRetry = true;
       return;
     }
     const marginX = (layout.marginMm / layout.a4WidthMm) * pageWidth;
@@ -983,6 +988,9 @@ function updatePreviewSizing() {
     grid.style.gridTemplateColumns = `repeat(${layout.columns}, 1fr)`;
     grid.style.gridTemplateRows = `repeat(${layout.rows}, 1fr)`;
   });
+  if (needsRetry) {
+    schedulePreviewSizing();
+  }
 }
 
 function schedulePreviewSizing() {
@@ -1295,6 +1303,7 @@ if (importSetupBtn && importSetupInput) {
 }
 window.addEventListener("beforeunload", persistState);
 window.addEventListener("resize", schedulePreviewSizing);
+window.addEventListener("load", updatePreviewSizing);
 
 if (!restoredState) {
   renderPagePreview();
